@@ -1,0 +1,22 @@
+{
+  "tera": "camera/v1",
+  "world": "showcase",
+  "fps": 30,
+  "width": 1280,
+  "height": 720,
+  "duration": 12,
+  "shots": [
+    { "id": "arrive", "start": 0, "end": 6, "kind": "keys", "path": "catmull", "ease": "inOutCubic",
+      "keys": [ { "t": 0, "position": [17, 1.4, 15], "target": [0, 1.8, -1], "fov": 34 },
+                { "t": 3, "position": [11, 2.6, 9.5], "target": [0, 1.6, -0.5], "fov": 37 },
+                { "t": 6, "position": [6.5, 2.2, 6.5], "target": [0, 1.5, 0], "fov": 40 } ] },
+    { "id": "circle", "start": 6, "end": 12, "kind": "orbit", "center": [0, 1.5, 0], "radius": 9.2, "height": 1.2, "fromDeg": 45, "toDeg": 125, "fov": 40, "ease": "linear" }
+  ],
+  "events": [
+    { "t": 1, "ops": [ { "op": "animate", "id": "halo", "to": { "rotation": [70, 390, 0] }, "duration": 5, "ease": "inOutSine" } ] },
+    { "t": 5, "ops": [ { "op": "animate", "id": "orb", "to": { "position": [4.3, 2.35, -0.6] }, "duration": 1.5, "ease": "outCubic" } ] },
+    { "t": 6, "ops": [ { "op": "update", "id": "lantern-light", "set": { "intensity": 5 } },
+                       { "op": "add", "entity": { "id": "hello", "kind": "text", "text": "frame-exact", "size": 0.22, "color": "#fffaf0", "billboard": true, "transform": { "position": [0, 3.2, 0] } } } ] }
+  ],
+  "marks": [ { "t": 0, "label": "arrive" }, { "t": 6, "label": "circle" } ]
+}

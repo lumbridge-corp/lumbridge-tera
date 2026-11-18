@@ -1,0 +1,18 @@
+{
+  "tera": "camera/v1",
+  "world": "demo",
+  "fps": 30,
+  "width": 1280,
+  "height": 720,
+  "duration": 8,
+  "shots": [
+    { "id": "push-in", "start": 0, "end": 4, "kind": "keys", "path": "catmull", "ease": "inOutCubic",
+      "keys": [ { "t": 0, "position": [14, 8, 16], "target": [0, 0.8, 0], "fov": 38 },
+                { "t": 4, "position": [5, 2.5, 6.5], "target": [0, 0.8, 0], "fov": 45 } ] },
+    { "id": "orbit", "start": 4, "end": 8, "kind": "orbit", "center": [0, 0.8, 0], "radius": 8, "height": 2.2, "fromDeg": 52, "toDeg": 140, "fov": 45, "ease": "linear" }
+  ],
+  "events": [
+    { "t": 5, "ops": [ { "op": "add", "entity": { "id": "pillar", "kind": "primitive", "shape": "cylinder", "size": [0.3, 3], "transform": { "position": [0, 1.5, -3] }, "material": { "color": "#c6f0c2" } } } ] }
+  ],
+  "marks": [ { "t": 0, "label": "open" }, { "t": 4, "label": "orbit" } ]
+}

@@ -1,0 +1,46 @@
+{
+  "tera": "world/v1",
+  "id": "showcase",
+  "title": "Showcase — the plaza at golden hour",
+  "sky": { "mode": "sun", "time": "2026-11-17T16:10:00-08:00", "lat": 37.77, "lon": -122.42 },
+  "environment": { "exposure": 1.0, "fog": { "color": "#c9c6c0", "near": 20, "far": 110 } },
+  "entities": [
+    { "id": "ground", "kind": "primitive", "shape": "plane", "size": [600, 600], "material": { "color": "#c4bcae", "roughness": 0.95 } },
+    { "id": "paving", "kind": "primitive", "shape": "cylinder", "size": [6.5, 0.02], "transform": { "position": [0, 0.01, 0] }, "material": { "color": "#ddd5c8", "roughness": 0.85 } },
+    { "id": "plinth", "kind": "primitive", "shape": "cylinder", "size": [1.7, 0.4], "transform": { "position": [0, 0.2, 0] }, "material": { "color": "#ebe3d6", "roughness": 0.7 } },
+    { "id": "plinth-step", "kind": "primitive", "shape": "cylinder", "size": [2.1, 0.12], "transform": { "position": [0, 0.06, 0] }, "material": { "color": "#d8cdbb", "roughness": 0.8 } },
+    { "id": "robot", "kind": "model", "src": "assets/RobotExpressive.glb", "animation": "Dance",
+      "transform": { "position": [0, 0.4, 0], "rotation": [0, 25, 0], "scale": 0.5 }, "tags": ["hero"] },
+    { "id": "tree", "kind": "splat", "src": "assets/ember-tree.splat", "transform": { "position": [-4.6, 0, -1.8], "scale": 1.15 }, "tags": ["splat"] },
+    { "id": "tree-label", "kind": "text", "text": "gaussian splat", "size": 0.2, "color": "#fffaf0", "billboard": true,
+      "transform": { "position": [-4.6, 3.9, -1.8] } },
+    { "id": "colonnade", "kind": "group", "transform": { "position": [0, 0, -7] }, "children": [
+      { "id": "pillar-1", "kind": "primitive", "shape": "cylinder", "size": [0.32, 4], "transform": { "position": [-6, 2, 0] }, "material": { "color": "#efe8dc", "roughness": 0.75 } },
+      { "id": "pillar-2", "kind": "primitive", "shape": "cylinder", "size": [0.32, 4], "transform": { "position": [-3, 2, 0] }, "material": { "color": "#efe8dc", "roughness": 0.75 } },
+      { "id": "pillar-3", "kind": "primitive", "shape": "cylinder", "size": [0.32, 4], "transform": { "position": [0, 2, 0] }, "material": { "color": "#efe8dc", "roughness": 0.75 } },
+      { "id": "pillar-4", "kind": "primitive", "shape": "cylinder", "size": [0.32, 4], "transform": { "position": [3, 2, 0] }, "material": { "color": "#efe8dc", "roughness": 0.75 } },
+      { "id": "pillar-5", "kind": "primitive", "shape": "cylinder", "size": [0.32, 4], "transform": { "position": [6, 2, 0] }, "material": { "color": "#efe8dc", "roughness": 0.75 } },
+      { "id": "lintel", "kind": "primitive", "shape": "box", "size": [13.2, 0.6, 0.9], "transform": { "position": [0, 4.3, 0] }, "material": { "color": "#e6ddcf", "roughness": 0.8 } },
+      { "id": "lintel-text", "kind": "text", "text": "LUMBRIDGE  TERA", "size": 0.34, "color": "#4a3c30", "align": "center",
+        "transform": { "position": [0, 4.3, 0.46] } }
+    ] },
+    { "id": "stand", "kind": "primitive", "shape": "box", "size": [0.9, 0.7, 0.9], "transform": { "position": [4.3, 0.35, -0.6], "rotation": [0, 18, 0] }, "material": { "color": "#2b2f36", "roughness": 0.55 } },
+    { "id": "halo", "kind": "primitive", "shape": "torus", "size": [0.75, 0.13], "transform": { "position": [4.3, 1.75, -0.6], "rotation": [0, 30, 0] }, "material": { "color": "#d4a35f", "metalness": 1, "roughness": 0.22 } },
+    { "id": "orb", "kind": "primitive", "shape": "sphere", "size": [0.3], "transform": { "position": [4.3, 1.75, -0.6] }, "material": { "color": "#f4f1ea", "metalness": 0.0, "roughness": 0.08 } },
+    { "id": "ball-teal", "kind": "primitive", "shape": "sphere", "size": [0.38], "transform": { "position": [2.7, 0.38, -2.7] }, "material": { "color": "#2f6f73", "roughness": 0.35 } },
+    { "id": "ball-coral", "kind": "primitive", "shape": "sphere", "size": [0.24], "transform": { "position": [3.4, 0.24, -2.0] }, "material": { "color": "#e0663f", "roughness": 0.4 } },
+    { "id": "glass", "kind": "primitive", "shape": "sphere", "size": [0.5], "transform": { "position": [-3.6, 0.5, 2.4] }, "material": { "color": "#a9d8ff", "roughness": 0.05, "opacity": 0.45 } },
+    { "id": "crate", "kind": "primitive", "shape": "box", "size": [0.8], "transform": { "position": [-2.9, 0.4, 1.2], "rotation": [0, 38, 0] }, "material": { "color": "#9a6b45", "roughness": 0.85 } },
+    { "id": "lantern", "kind": "group", "transform": { "position": [2.2, 0, 0.6] }, "children": [
+      { "id": "lantern-post", "kind": "primitive", "shape": "cylinder", "size": [0.04, 1.3], "transform": { "position": [0, 0.65, 0] }, "material": { "color": "#1d1f24", "roughness": 0.5, "metalness": 0.6 } },
+      { "id": "lantern-bulb", "kind": "primitive", "shape": "sphere", "size": [0.09], "transform": { "position": [0, 1.36, 0] }, "material": { "color": "#ffd9a8", "emissive": "#ffb46b" } },
+      { "id": "lantern-light", "kind": "light", "light": "point", "color": "#ffb46b", "intensity": 3, "castShadow": true, "transform": { "position": [0, 1.36, 0] } }
+    ] },
+    { "id": "rim", "kind": "light", "light": "spot", "color": "#cfe0ff", "intensity": 40, "target": [0, 1.2, 0], "transform": { "position": [-4, 7, 5] } },
+    { "id": "fill", "kind": "light", "light": "hemisphere", "color": "#dfe9ff", "intensity": 0.12 }
+  ],
+  "cameras": {
+    "default": { "position": [9, 3.2, 10], "target": [0, 1.4, 0], "fov": 40 },
+    "tree": { "position": [-1.5, 1.8, 3.5], "target": [-4.6, 1.8, -1.8], "fov": 45 }
+  }
+}

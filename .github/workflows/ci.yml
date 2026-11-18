@@ -1,0 +1,34 @@
+# Scrub check, typecheck, unit tests and the gen worker's tests on a GitHub-hosted runner.
+# No GPU and no secrets are needed. Actions are pinned to a commit.
+name: CI
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Scrub check
+        run: scripts/scrub-check
+      - name: Node
+        run: |
+          curl -fsSL https://nodejs.org/dist/v22.18.0/node-v22.18.0-linux-x64.tar.xz | tar -xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/node-v22.18.0-linux-x64/bin" >> "$GITHUB_PATH"
+      - name: npm ci
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck and unit tests
+        run: npm run check
+      - name: Gen worker tests
+        working-directory: workers/server
+        run: python3 -m unittest discover -s tests -t .

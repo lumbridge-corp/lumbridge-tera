@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // Live mode paints the viewer's cream (dark: graphite) before any script loads; render mode keeps its plain page.
+      if (!/[?&]mode=render(&|$)/.test(location.search)) document.documentElement.classList.add("tera-interactive");
+    </script>
+    <title>Lumbridge Tera</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' rx='3' fill='%23b8ff3c'/%3E%3C/svg%3E" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #0b0d12; overflow: hidden; }
+      canvas { display: block; touch-action: none; }
+      html.tera-interactive, html.tera-interactive body { background: #f5f0e6; }
+      @media (prefers-color-scheme: dark) { html.tera-interactive, html.tera-interactive body { background: #11130f; } }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="/src/engine/main.ts"></script>
+  </body>
+</html>
