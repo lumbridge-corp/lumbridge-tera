@@ -7,9 +7,9 @@
 // engine.ts calls setWorld() at the start of every sync, build()/upsert()/remove() for
 // the entities, and update() once per drawn frame.
 import * as THREE from "three";
-import type { Entity, WorldPack } from "../schema/index.ts";
+import type { Entity, ResidentDef, WorldPack } from "../schema/index.ts";
 import { ActorSystem, type ActorSpec, type LivingHooks } from "./actors.ts";
-import { FlowObject, MeterObject, type FlowSpec, type LivingWorld, type MeterSpec } from "./flows.ts";
+import { FlowObject, FlowPool, MeterObject, type FlowSpec, type LivingWorld, type MeterSpec } from "./flows.ts";
 
 export const LIVING_KINDS = new Set(["actor", "flow", "meter"]);
 export const isLiving = (e: Entity) => LIVING_KINDS.has(e.kind);
@@ -23,9 +23,14 @@ export class Living {
   private t0 = performance.now();
   private lastT: number | null = null;
 
-  constructor(scene: THREE.Scene, private renderMode: boolean, private hooks: LivingHooks) {
+  /** Live mode: every flow's pulses in a few shared meshes (flows.ts FlowPool), null = each flow draws its own. */
+  readonly flowPool: FlowPool | null;
+
+  constructor(scene: THREE.Scene, private renderMode: boolean, private hooks: LivingHooks, opts: { poolFlows?: boolean } = {}) {
     this.actors = new ActorSystem(renderMode, hooks);
     scene.add(this.actors.root);
+    this.flowPool = opts.poolFlows ? new FlowPool() : null;
+    if (this.flowPool) scene.add(this.flowPool.root);
   }
 
   /** Live clock: seconds since the page started. */
@@ -37,6 +42,7 @@ export class Living {
     const lw = w as WorldPack & { paths?: LivingWorld["paths"]; graph?: LivingWorld["graph"] };
     this.world = { paths: lw.paths ?? [], graph: lw.graph };
     this.actors.setWorld(this.world);
+    this.actors.setResidents((w as WorldPack & { residents?: ResidentDef[] }).residents);
     for (const f of this.flows.values()) f.setWorld(this.world);
   }
 
@@ -44,7 +50,7 @@ export class Living {
   build(e: Entity): THREE.Object3D {
     const any = e as unknown as { id: string; kind: string };
     if (any.kind === "flow") {
-      const f = new FlowObject(e as unknown as FlowSpec, (m) => this.hooks.warn(m));
+      const f = new FlowObject(e as unknown as FlowSpec, (m) => this.hooks.warn(m), !!this.flowPool);
       f.setWorld(this.world);
       this.flows.set(any.id, f);
       return f.obj;
@@ -80,6 +86,7 @@ export class Living {
     this.lastT = now;
     this.actors.update(now, camera);
     for (const f of this.flows.values()) f.update(now, camera);
+    this.flowPool?.gather(this.flows.values());
     for (const m of this.meters.values()) m.update(dt);
   }
 

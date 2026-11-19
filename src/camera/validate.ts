@@ -101,6 +101,7 @@ export function validate(input: unknown, world?: WorldPack, opts: ValidateOption
           }
           case "update":
           case "animate":
+          case "screen":
             if (!ids.has(op.id)) errors.push(`${where}: ${op.op} unknown entity "${op.id}"`);
             break;
           case "remove":

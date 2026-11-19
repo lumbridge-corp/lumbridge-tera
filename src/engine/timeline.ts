@@ -139,6 +139,16 @@ export function applyOp(world: WorldPack, rawOp: Op, clock?: OpClock): void {
       f.entity.transform = lerpTransform(f.entity.transform, op.to, u);
       return;
     }
+    case "screen": {
+      const f = findEntity(world.entities, op.id);
+      if (!f) throw new Error(`no entity "${op.id}"`);
+      const e = f.entity;
+      if (e.kind !== "primitive" || !e.material?.screen) throw new Error(`"${op.id}" is not a screen (a box or plane with material.screen)`);
+      const spec = e.material.screen === true ? {} : e.material.screen;
+      // a fresh entity object, so the renderer sees the content change in the entity JSON
+      f.list[f.index] = { ...e, material: { ...e.material, screen: { ...spec, content: structuredClone(op.content) } } };
+      return;
+    }
     case "path":
     case "graph":
       applyLivingOp(world, op);

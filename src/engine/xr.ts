@@ -16,6 +16,7 @@
 //   AR: the first select places the model on the surface under the reticle (hit-test),
 //   otherwise it starts 0.8 m in front of you at table height.
 import * as THREE from "three";
+import { BATCH_LAYER } from "./batch.ts";
 
 export type XrMode = "vr" | "ar";
 export type Scale = "table" | "walk";
@@ -123,7 +124,7 @@ export class XrController {
   private hitSource: XRHitTestSource | null = null;
   private placed = false;
   private warned = false;
-  private raycaster = new THREE.Raycaster();
+  private raycaster = (() => { const r = new THREE.Raycaster(); r.layers.enable(BATCH_LAYER); return r; })();
   button: HTMLElement | null = null;
 
   private readonly host: XrHost;

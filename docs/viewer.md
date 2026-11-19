@@ -12,11 +12,13 @@ checkout and compares frame hashes of the demo, showcase and living worlds on bo
 | Loading screen | `world.title` (split at " — " into name + tagline), a thin bar fed by real progress (world.json bytes, then asset loads started/finished, then the first frame), a status line. Fades out once two frames have been drawn with every asset loaded. Errors (no WebGPU/WebGL 2, world failed to load, live feed unreachable before the first snapshot) show a message and **Try again**. |
 | HUD | Title, live dot (green *live*, amber *reconnecting*, red *offline*; only with `?live=`), visible agents (actors with `visible` ≠ false), flow legend (`world.legend`, hidden when absent), Views, idle orbit, screenshot (PNG of the current frame), fullscreen (where the browser allows it), VR / AR (only when `navigator.xr` supports the session; reopens the page with `?xr=`). Light and dark follow the system. Safe-area insets, no overflow at 360 px. |
 | Camera presets | `world.cameras` in file order (`default` is *Home*, or *Overview* when an `overview` camera is the same pose), then every visible group tagged `plot`, framed from its bounds and looked at from outside the island. Keys **1–9**. Flights are eased swings around the target (0.8–2.2 s by distance and turn); a drag or the wheel takes the camera back. The last view is remembered per world in localStorage. Authored cameras are pulled back up to 1.5× on portrait screens. |
-| Fly to | Double-click / double-tap anything, or **Fly to** on the card. Robots are framed from about 50° above, turning the bearing until nothing solid is in the way, and the camera then follows the robot until another view is picked. |
+| Fly to | Double-click / double-tap anything, or **Fly to** on the card. Robots are framed from about 50° above, turning the bearing (then lower, then closer) until nothing solid is in the way, and the camera then follows the robot until another view is picked. The follow camera stays out of geometry (`follow.ts`): with `world.layers` it follows across a floor (not down into a lift), keeps under the robot's layer's ceiling and inside its room, waits where it is while the robot is between layers (a lift shaft through rock, a tunnel), fades and cuts to a clear pose when the robot comes out on another floor (a flight would pass through the rock), and swings to a clear pose when something solid gets in the way. |
 | Idle orbit | After 60 s without input (`?idle=<s>`) the camera turns slowly (≈ 200 s per turn) until the next input. Toggle in the HUD (remembered). Off and disabled with `prefers-reduced-motion`. |
-| Selection card | Click / tap: the nearest actor, meter or flow, else the nearest group tagged `plot`/`building`/`machine`/`hero`, else the nearest tagged group. Shows the label or a readable id, the kind, an actor's `state` and where it is heading (`move.to`), a meter's value, the meters inside a machine, tags. World JSON only, no network. Refreshes twice a second as the feed changes things. Esc closes. |
-| Name tags | Actor labels never draw taller than 22 CSS px however close the camera comes, fade out below ~10 px (too small to read) and right at the camera (< 0.9–2.4 m). They were already depth tested, so buildings hide them. Pure function of the camera, so it is deterministic; render mode keeps world-size tags unless `?labels=fit`. |
+| Selection card | Click / tap: the nearest actor, meter or flow, else the nearest group tagged `plot`/`building`/`machine`/`hero`, else the nearest tagged group. Shows the label or a readable id, the kind, an actor's `state` and where it is heading (`move.to`; a journey's stops), an actor's `card` (kind, title, detail, facts) when it has one, a meter's value, the meters inside a machine, tags. World JSON only, no network. Refreshes twice a second as the feed changes things. Esc closes. |
+| Name tags | Actor labels never draw taller than 22 CSS px however close the camera comes, fade out below ~10 px (too small to read) and right at the camera (< 0.9–2.4 m). They were already depth tested, so buildings hide them. Pure function of the camera, so it is deterministic; render mode keeps world-size tags unless `?labels=fit`. Live mode also declutters: a tag that would overlap an older one on screen is hidden until they part (never in render mode). |
+| Journeys | Actors tagged `journey` (multi-stop walks, `move.stops`: CONTRACT.md 1a) get a **Journeys n** toggle in the HUD once the first one appears (**J**; remembered; `?journeys=0\|1`). Off hides them with their trails, tags and cards. A journey robot's card shows its `card` (kind, title, route, facts such as model, latency, tokens) and what it is doing now: *walking*, or *working · Library* while it stands at a stop. |
 | Sky time | Real skies only (`sky.mode: "real"`): a small panel under the title with the local time at the world's place (`sky.timezone`, else a fixed offset from the longitude), a sun / twilight / moon icon, a 24 h scrubber (drag to any time of that day; the clock keeps running from there) and **Now** (follow the wall clock again; lit while following). The rate shows as ×n when `?timeScale=` or `sky.timeScale` is not 1. docs/sky.md. |
+| Walk / Fly / layers | **Orbit · Walk · Fly** at the bottom (**V** cycles, **F** walk ↔ fly, **Esc** back to Orbit): a figure of your own walks the floor of a layer (WASD, Shift, drag to look; a joystick on touch screens) or flies; the Layers panel travels between `world.layers` (a lift ride when the world has a `spine-car`). With `?presence=` other people appear with name tags and the HUD counts them. docs/players.md. |
 | Accessibility | Every control is a real button with an `aria-label`; the views menu works with arrow keys / Home / End / Esc; focus rings; the loader is a live region with a progressbar; reduced motion shortens flights to 0.3 s and turns off auto-orbit and UI transitions. |
 
 ## Query flags (live mode)
@@ -28,7 +30,10 @@ checkout and compares frame hashes of the demo, showcase and living worlds on bo
 | `?idle=<seconds>` | idle-orbit delay (default 60) |
 | `?labels=fit` | render mode only: fit name tags like the live viewer does (`tera render --labels fit`) |
 | `?time=<ISO\|now>` `&timeScale=<x>` | a real sky's clock: start time and sky seconds per second (e.g. `600` = ten minutes a second) |
+| `?presence=<ws url or path>` | join a presence server: other people in the world (docs/players.md) |
+| `?journeys=0\|1` | hide / show journey robots (actors tagged `journey`) regardless of the saved choice |
 | `?replay=<url>` `&replaySpeed=<x>` `&replayLoop=cut` | play a recorded live stream in a loop, no server (CONTRACT.md 9a); the HUD dot says "replay" |
+| `?batch=0` | no static batching / pooled flows (below): one mesh per entity, for comparisons and debugging |
 
 Unchanged: `?world=`, `?live=`, `?renderer=`, `?xr=` (CONTRACT.md section 4).
 
@@ -42,7 +47,7 @@ Levels (`src/engine/viewer/quality.ts`):
 | medium | 1.5 | on | ≤ 2048 |
 | low | 1.25 | off | ≤ 1024 |
 | lower | 1 | off | ≤ 1024 |
-| lowest | 0.75 | off | ≤ 512 |
+| lowest | 0.75 | off | none (no shadow pass) |
 
 - The pixel ratio is never above 2 (`min(devicePixelRatio, cap)`).
 - Start: desktops at *high*; touch screens whose short side is under 820 px (phones, small tablets) at *medium*.
@@ -51,8 +56,43 @@ Levels (`src/engine/viewer/quality.ts`):
 - XR sessions keep their own budget (no post, shadows ≤ 1024, `docs/xr.md`); the smaller shadow cap wins.
 - `document.documentElement.dataset.teraQuality` shows the current level (and `teraViewer.state()` in devtools).
 
+### Draw calls (static batching, pooled flows)
+
+A big town is thousands of primitives, and on both backends the cost is mostly per draw call,
+paid again in every pass (shadow map, main, the glow pass for bloom, WebGL2's AO normals and
+transmission). The live viewer therefore draws still things in bulk (`src/engine/batch.ts`):
+
+- **Static batches.** Opaque primitives (and repeat copies without a per-copy tint) that share a
+  material are baked into one world-space mesh per space cell (64 x 24 x 64 m, centred on the
+  origin, so an island's layers fall into separate cells and frustum culling still drops what is
+  off screen). Meshes that differ only in base colour share a batch: the colour rides per vertex.
+  Glass, screens, see-through materials, ground planes, text, models, actors, flows and meters
+  are never batched.
+- **The originals stay.** Each batched mesh keeps its place in the scene on layer 1, which
+  cameras (and so shadow maps and post passes) skip and the engine's raycasters include: picking,
+  selection cards, `bounds()`, focus, walking and collisions see the entity's own object, as before.
+  Shadow frusta are fitted to the members' own boxes, so shadows fall exactly as they did.
+- **Live ops still land.** An entity that changes after it was batched (an `update` op rebuilds it,
+  it moves, hides, is animated, or `engine.entityObject(id)` hands it out to be moved by hand)
+  leaves its batch for good and draws as its own mesh again; its batch is rebuilt without it.
+  Night-lit materials (`material.night`) are batched like any other and fade with the sky. Tag an
+  entity `dynamic` to keep it out of batches from the start.
+- **Pooled flows.** The pulses of every flow (cores and halos) are drawn by a few shared instanced
+  meshes instead of two meshes per flow; each flow still poses its own (kept for picking).
+- **Still objects keep their matrices.** Entity transforms are composed when they change (a sync,
+  a tween step), not every frame, and world matrices are updated once per frame, not once per pass.
+
+Render mode never batches: frames stay byte-identical (`npm run parity:render`). The batched
+picture matches the unbatched one up to float rounding: a batch holds its vertices in world space
+(baked in float64, stored as float32) where a single mesh has the GPU apply its model-view matrix
+in float32, so a few antialiased edge pixels flip coverage (`npm run parity:batch` renders both and
+counts them: under 0.5 % of a frame, scattered single pixels and a faint 1-step bloom halo).
+
 ## Tests
 
 - `npm run check` — unit tests for flights, framing, the quality governor, presets / selection / cards, label fitting.
 - `npm run smoke:viewer` — headless Chrome on the living world: loader, presets + keys + flight + remembered view, click → card, double-click → fly-to, idle orbit, hidden-tab pause, screenshot download, `?ui=0`, reduced motion, 360 px layout, error + retry.
+- `npm run smoke:players` — walk, fly, walls, floors, layer travel, two people at once (docs/players.md).
 - `npm run parity:render` — render mode frame hashes identical to `origin/main` (`--base <ref>` for another base).
+- `npm run parity:batch` — batched vs one-mesh-per-entity frames of every camera, both backends (`--world <file>` for your own worlds).
+- `npm run smoke:perf` — fps, GPU draw calls per frame, meshes, materials and shadow casters per named camera at high and medium; fails over a draw-call budget (`--calls`, and `--fps` for a frame-rate floor on a quiet machine). `--world <dir> --url /world/<file>` for your own world, `--pose name=x,y,z:tx,ty,tz` for extra views, `--query batch=0` to compare.

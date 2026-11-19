@@ -28,6 +28,20 @@ export const Graph = z.object({ nodes: z.array(GraphNode), edges: z.array(GraphE
 export type Graph = z.infer<typeof Graph>;
 export type GraphEdge = z.infer<typeof GraphEdge>;
 
+/**
+ * One stop of a journey (`move.stops`): walk to graph node `to`, stay `dwell` seconds doing
+ * `state` (default working), then go on. Actors stopping at the same node at the same time
+ * queue around it instead of standing inside each other (CONTRACT.md section 1a, Journeys).
+ */
+export const JourneyStop = z.object({
+  to: RefId,
+  dwell: z.number().min(0).max(3600),
+  state: z.enum(["idle", "working"]).optional(),
+});
+export type JourneyStop = z.infer<typeof JourneyStop>;
+/** Most stops one journey may have. */
+export const MAX_STOPS = 16;
+
 export const ActorMove = z
   .object({
     path: RefId.optional().describe("walk along this world path"),
@@ -39,19 +53,42 @@ export const ActorMove = z
     loop: z.boolean().optional(), // closed path: loop (default true). open path / route: walk back and forth
     dwell: z.number().min(0).optional(), // seconds spent at each end when looping back and forth (shows `state`)
     lane: z.number().min(-3).max(3).optional(), // metres right of the route centre line (default: a per-actor lane 0.25-0.45 m); 0 = on the line
+    stops: z.array(JourneyStop).max(MAX_STOPS).optional(), // a journey: from → each stop (dwelling) → to
   })
   .refine((m) => !(m.path && m.to), { message: "move takes path OR to, not both" })
-  .refine((m) => !!(m.path || m.to), { message: "move needs path or to" });
+  .refine((m) => !!(m.path || m.to), { message: "move needs path or to" })
+  .refine((m) => !(m.stops?.length && (!m.to || m.loop)), { message: "move.stops needs `to` (where the journey ends) and no loop" });
 export type ActorMove = z.infer<typeof ActorMove>;
+
+/** A fading ribbon on the ground behind a walking actor: where it walked in the last `seconds`. */
+export const ActorTrail = z.object({
+  color: Col.optional(), // default: the actor's colour
+  seconds: z.number().positive().max(30).optional(), // default 2.4
+  width: z.number().positive().max(1).optional(), // metres, default 0.14
+  opacity: z.number().min(0).max(1).optional(), // at the actor's feet, default 0.8 (fades to 0 at the tail)
+});
+export type ActorTrail = z.infer<typeof ActorTrail>;
+
+/** What the live viewer's selection card says about an actor (display only, never interpreted). */
+export const ActorCard = z.object({
+  kind: z.string().max(32).optional(), // the card's kicker ("Journey"); default "Agent"
+  title: z.string().max(80).optional(), // default: the label, else the id
+  detail: z.string().max(120).optional(),
+  facts: z.array(z.object({ label: z.string().max(24), value: z.string().max(48) })).max(8).optional(),
+});
+export type ActorCard = z.infer<typeof ActorCard>;
 
 export const ActorFields = {
   kind: z.literal("actor"),
-  style: z.enum(["worker", "model"]).optional(), // default worker
+  style: z.enum(["worker", "model", "resident"]).optional(), // default worker; "resident" = a named resident (world.residents)
+  resident: z.string().regex(/^[a-z0-9][a-z0-9-_]{0,39}$/).optional(), // world.residents id: look, name plate and card (style "resident")
   src: z.string().optional(), // .glb for style "model"
   color: Col.optional(),
   label: z.string().max(80).optional(),
   state: z.enum(["idle", "walking", "working"]).optional(), // what it does when not moving (default idle)
   move: ActorMove.optional(),
+  trail: ActorTrail.optional(),
+  card: ActorCard.optional(),
 };
 
 export const PipeDef = z.object({
@@ -127,6 +164,7 @@ export type ReplayHeader = z.infer<typeof ReplayHeader>;
 interface LivingWorldLike {
   paths?: PathDef[];
   graph?: Graph;
+  residents?: { id: string }[];
 }
 interface EntityLike {
   id: string;
@@ -147,7 +185,10 @@ export function livingRefErrors(e: EntityLike, world: LivingWorldLike): string[]
     if (m?.path && !paths.has(m.path)) out.push(`actor "${e.id}": no path "${m.path}". Paths: ${listP()}`);
     if (m?.to && !nodes.has(m.to)) out.push(`actor "${e.id}": no graph node "${m.to}". Nodes: ${listN()}`);
     if (m?.from && !nodes.has(m.from)) out.push(`actor "${e.id}": no graph node "${m.from}". Nodes: ${listN()}`);
+    for (const s of m?.stops ?? []) if (!nodes.has(s.to)) out.push(`actor "${e.id}": stop at unknown graph node "${s.to}". Nodes: ${listN()}`);
     if (e.style === "model" && !e.src) out.push(`actor "${e.id}": style "model" needs src (a .glb)`);
+    if (typeof e.resident === "string" && world.residents && !world.residents.some((r) => r.id === e.resident)) out.push(`actor "${e.id}": no resident "${e.resident}" in world.residents. Residents: ${world.residents.map((r) => r.id).slice(0, 20).join(", ") || "(none)"}`);
+    if (e.resident !== undefined && e.style !== "resident") out.push(`actor "${e.id}": "resident" needs style "resident"`);
   }
   return out;
 }

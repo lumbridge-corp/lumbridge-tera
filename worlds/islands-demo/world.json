@@ -1,0 +1,1524 @@
+{
+ "tera": "world/v1",
+ "id": "islands-demo",
+ "title": "Hometown — a home island and a harbor in one sky",
+ "sky": {
+  "mode": "sun",
+  "time": "2026-06-21T16:30:00-07:00",
+  "lat": 37.77,
+  "lon": -122.42
+ },
+ "environment": {
+  "exposure": 1.05,
+  "fog": {
+   "color": "#efe6d6",
+   "near": 120,
+   "far": 380
+  }
+ },
+ "entities": [
+  {
+   "id": "fill",
+   "kind": "light",
+   "light": "hemisphere",
+   "color": "#fff6e8",
+   "intensity": 0.7
+  },
+  {
+   "id": "home-top",
+   "kind": "primitive",
+   "shape": "cylinder",
+   "size": [
+    14,
+    0.6
+   ],
+   "transform": {
+    "position": [
+     0,
+     -0.3,
+     0
+    ]
+   },
+   "material": {
+    "color": "#c3cfaa",
+    "roughness": 0.95
+   },
+   "tags": [
+    "ground"
+   ]
+  },
+  {
+   "id": "home-rim",
+   "kind": "primitive",
+   "shape": "cylinder",
+   "size": [
+    14.05,
+    1.2,
+    13.6
+   ],
+   "transform": {
+    "position": [
+     0,
+     -1.2,
+     0
+    ]
+   },
+   "material": {
+    "color": "#e4dccd",
+    "roughness": 0.9
+   }
+  },
+  {
+   "id": "home-keel",
+   "kind": "primitive",
+   "shape": "cone",
+   "size": [
+    13.6,
+    12.6,
+    0.6
+   ],
+   "transform": {
+    "position": [
+     0,
+     -8.1,
+     0
+    ],
+    "rotation": [
+     180,
+     0,
+     0
+    ]
+   },
+   "material": {
+    "color": "#c8b392",
+    "roughness": 0.92
+   }
+  },
+  {
+   "id": "hall",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    6,
+    4,
+    5
+   ],
+   "radius": 0.08,
+   "transform": {
+    "position": [
+     -3,
+     2,
+     -2
+    ]
+   },
+   "material": {
+    "color": "#f3ede2",
+    "roughness": 0.85
+   }
+  },
+  {
+   "id": "hall-roof",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    6.4,
+    0.4,
+    5.4
+   ],
+   "radius": 0.08,
+   "transform": {
+    "position": [
+     -3,
+     4.2,
+     -2
+    ]
+   },
+   "material": {
+    "color": "#cfae80",
+    "roughness": 0.85
+   }
+  },
+  {
+   "id": "tower",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    2,
+    8,
+    2
+   ],
+   "radius": 0.08,
+   "transform": {
+    "position": [
+     3,
+     4,
+     3
+    ]
+   },
+   "material": {
+    "color": "#fbf8f2",
+    "roughness": 0.85
+   }
+  },
+  {
+   "id": "beacon",
+   "kind": "primitive",
+   "shape": "sphere",
+   "size": [
+    0.6
+   ],
+   "transform": {
+    "position": [
+     3,
+     8.5,
+     3
+    ]
+   },
+   "material": {
+    "color": "#c4ec3e",
+    "emissive": "#9fc42a",
+    "glowExact": true,
+    "roughness": 0.4
+   }
+  },
+  {
+   "id": "tree-a",
+   "kind": "group",
+   "transform": {
+    "position": [
+     -8,
+     0,
+     5
+    ]
+   },
+   "children": [
+    {
+     "id": "tree-a-trunk",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.12,
+      1.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       0.6,
+       0
+      ]
+     },
+     "material": {
+      "color": "#b39874",
+      "roughness": 0.85
+     }
+    },
+    {
+     "id": "tree-a-crown",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.9
+     ],
+     "transform": {
+      "position": [
+       0,
+       1.7,
+       0
+      ]
+     },
+     "material": {
+      "color": "#a9bd96",
+      "roughness": 0.95
+     }
+    }
+   ]
+  },
+  {
+   "id": "tree-b",
+   "kind": "group",
+   "transform": {
+    "position": [
+     6,
+     0,
+     -7
+    ]
+   },
+   "children": [
+    {
+     "id": "tree-b-trunk",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.12,
+      1.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       0.6,
+       0
+      ]
+     },
+     "material": {
+      "color": "#b39874",
+      "roughness": 0.85
+     }
+    },
+    {
+     "id": "tree-b-crown",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.9
+     ],
+     "transform": {
+      "position": [
+       0,
+       1.7,
+       0
+      ]
+     },
+     "material": {
+      "color": "#a9bd96",
+      "roughness": 0.95
+     }
+    }
+   ]
+  },
+  {
+   "id": "tree-c",
+   "kind": "group",
+   "transform": {
+    "position": [
+     -6,
+     0,
+     8
+    ]
+   },
+   "children": [
+    {
+     "id": "tree-c-trunk",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.12,
+      1.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       0.6,
+       0
+      ]
+     },
+     "material": {
+      "color": "#b39874",
+      "roughness": 0.85
+     }
+    },
+    {
+     "id": "tree-c-crown",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.9
+     ],
+     "transform": {
+      "position": [
+       0,
+       1.7,
+       0
+      ]
+     },
+     "material": {
+      "color": "#a9bd96",
+      "roughness": 0.95
+     }
+    }
+   ]
+  }
+ ],
+ "cameras": {
+  "default": {
+   "position": [
+    -38,
+    26,
+    40
+   ],
+   "target": [
+    22,
+    0,
+    -12
+   ],
+   "fov": 40
+  },
+  "overview": {
+   "position": [
+    -38,
+    26,
+    40
+   ],
+   "target": [
+    22,
+    0,
+    -12
+   ],
+   "fov": 40
+  },
+  "town": {
+   "position": [
+    18,
+    12,
+    20
+   ],
+   "target": [
+    0,
+    1,
+    0
+   ],
+   "fov": 42
+  }
+ },
+ "layers": [
+  {
+   "id": "surface",
+   "name": "Town",
+   "floorY": 0,
+   "walk": {
+    "center": [
+     0,
+     0
+    ],
+    "radius": 13.4
+   },
+   "spawn": [
+    0,
+    0,
+    7
+   ],
+   "camera": "town"
+  }
+ ],
+ "islands": [
+  {
+   "id": "harbor",
+   "name": "Harbor",
+   "src": "harbor.json",
+   "offset": [
+    60,
+    3,
+    -30
+   ],
+   "radius": 9.5,
+   "load": 45,
+   "presence": "/presence-harbor",
+   "impostor": [
+    {
+     "id": "disc",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      9,
+      0.6
+     ],
+     "transform": {
+      "position": [
+       0,
+       -0.3,
+       0
+      ]
+     },
+     "material": {
+      "color": "#c3cfaa",
+      "roughness": 0.85
+     }
+    },
+    {
+     "id": "keel",
+     "kind": "primitive",
+     "shape": "cone",
+     "size": [
+      8.6,
+      8,
+      0.6
+     ],
+     "transform": {
+      "position": [
+       0,
+       -5,
+       0
+      ],
+      "rotation": [
+       180,
+       0,
+       0
+      ]
+     },
+     "material": {
+      "color": "#c8b392",
+      "roughness": 0.85
+     }
+    },
+    {
+     "id": "blocks",
+     "kind": "primitive",
+     "shape": "box",
+     "size": [
+      5,
+      3,
+      4
+     ],
+     "transform": {
+      "position": [
+       1,
+       1.5,
+       1
+      ]
+     },
+     "material": {
+      "color": "#f3ede2",
+      "roughness": 0.85
+     }
+    }
+   ],
+   "ferry": {
+    "name": "Cable car",
+    "entities": [
+     {
+      "id": "home-station",
+      "kind": "group",
+      "transform": {
+       "position": [
+        11.091,
+        0,
+        -5.545
+       ],
+       "rotation": [
+        0,
+        116.56505117707799,
+        0
+       ]
+      },
+      "children": [
+       {
+        "id": "home-station-l",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         0.18,
+         3,
+         0.18
+        ],
+        "radius": 0.04,
+        "transform": {
+         "position": [
+          -1.1,
+          1.5,
+          0
+         ]
+        },
+        "material": {
+         "color": "#c9ccce",
+         "roughness": 0.35,
+         "metalness": 0.8
+        }
+       },
+       {
+        "id": "home-station-r",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         0.18,
+         3,
+         0.18
+        ],
+        "radius": 0.04,
+        "transform": {
+         "position": [
+          1.1,
+          1.5,
+          0
+         ]
+        },
+        "material": {
+         "color": "#c9ccce",
+         "roughness": 0.35,
+         "metalness": 0.8
+        }
+       },
+       {
+        "id": "home-station-beam",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         2.6,
+         0.2,
+         0.3
+        ],
+        "radius": 0.05,
+        "transform": {
+         "position": [
+          0,
+          3,
+          0
+         ]
+        },
+        "material": {
+         "color": "#fbf8f2",
+         "roughness": 0.85
+        }
+       },
+       {
+        "id": "home-station-deck",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         2.8,
+         0.1,
+         2.4
+        ],
+        "radius": 0.04,
+        "transform": {
+         "position": [
+          0,
+          0.05,
+          0
+         ]
+        },
+        "material": {
+         "color": "#e3cba4",
+         "roughness": 0.7
+        }
+       }
+      ]
+     },
+     {
+      "id": "harbor-station",
+      "kind": "group",
+      "transform": {
+       "position": [
+        52.666,
+        3,
+        -26.333
+       ],
+       "rotation": [
+        0,
+        116.56505117707799,
+        0
+       ]
+      },
+      "children": [
+       {
+        "id": "harbor-station-l",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         0.18,
+         3,
+         0.18
+        ],
+        "radius": 0.04,
+        "transform": {
+         "position": [
+          -1.1,
+          1.5,
+          0
+         ]
+        },
+        "material": {
+         "color": "#c9ccce",
+         "roughness": 0.35,
+         "metalness": 0.8
+        }
+       },
+       {
+        "id": "harbor-station-r",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         0.18,
+         3,
+         0.18
+        ],
+        "radius": 0.04,
+        "transform": {
+         "position": [
+          1.1,
+          1.5,
+          0
+         ]
+        },
+        "material": {
+         "color": "#c9ccce",
+         "roughness": 0.35,
+         "metalness": 0.8
+        }
+       },
+       {
+        "id": "harbor-station-beam",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         2.6,
+         0.2,
+         0.3
+        ],
+        "radius": 0.05,
+        "transform": {
+         "position": [
+          0,
+          3,
+          0
+         ]
+        },
+        "material": {
+         "color": "#fbf8f2",
+         "roughness": 0.85
+        }
+       },
+       {
+        "id": "harbor-station-deck",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         2.8,
+         0.1,
+         2.4
+        ],
+        "radius": 0.04,
+        "transform": {
+         "position": [
+          0,
+          0.05,
+          0
+         ]
+        },
+        "material": {
+         "color": "#e3cba4",
+         "roughness": 0.7
+        }
+       }
+      ]
+     },
+     {
+      "id": "cable-0",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       11.091,
+       2.6,
+       -5.545
+      ],
+      "to": [
+       12.823,
+       2.374,
+       -6.411
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-1",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       12.823,
+       2.374,
+       -6.411
+      ],
+      "to": [
+       14.556,
+       2.178,
+       -7.277
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-2",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       14.556,
+       2.178,
+       -7.277
+      ],
+      "to": [
+       16.288,
+       2.012,
+       -8.143
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-3",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       16.288,
+       2.012,
+       -8.143
+      ],
+      "to": [
+       18.02,
+       1.878,
+       -9.01
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-4",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       18.02,
+       1.878,
+       -9.01
+      ],
+      "to": [
+       19.752,
+       1.774,
+       -9.876
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-5",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       19.752,
+       1.774,
+       -9.876
+      ],
+      "to": [
+       21.485,
+       1.7,
+       -10.742
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-6",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       21.485,
+       1.7,
+       -10.742
+      ],
+      "to": [
+       23.217,
+       1.657,
+       -11.608
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-7",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       23.217,
+       1.657,
+       -11.608
+      ],
+      "to": [
+       24.949,
+       1.644,
+       -12.474
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-8",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       24.949,
+       1.644,
+       -12.474
+      ],
+      "to": [
+       26.682,
+       1.663,
+       -13.34
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-9",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       26.682,
+       1.663,
+       -13.34
+      ],
+      "to": [
+       28.414,
+       1.711,
+       -14.207
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-10",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       28.414,
+       1.711,
+       -14.207
+      ],
+      "to": [
+       30.146,
+       1.79,
+       -15.073
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-11",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       30.146,
+       1.79,
+       -15.073
+      ],
+      "to": [
+       31.878,
+       1.9,
+       -15.939
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-12",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       31.878,
+       1.9,
+       -15.939
+      ],
+      "to": [
+       33.611,
+       2.04,
+       -16.805
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-13",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       33.611,
+       2.04,
+       -16.805
+      ],
+      "to": [
+       35.343,
+       2.211,
+       -17.671
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-14",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       35.343,
+       2.211,
+       -17.671
+      ],
+      "to": [
+       37.075,
+       2.413,
+       -18.537
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-15",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       37.075,
+       2.413,
+       -18.537
+      ],
+      "to": [
+       38.808,
+       2.644,
+       -19.404
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-16",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       38.808,
+       2.644,
+       -19.404
+      ],
+      "to": [
+       40.54,
+       2.907,
+       -20.27
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-17",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       40.54,
+       2.907,
+       -20.27
+      ],
+      "to": [
+       42.272,
+       3.2,
+       -21.136
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-18",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       42.272,
+       3.2,
+       -21.136
+      ],
+      "to": [
+       44.005,
+       3.524,
+       -22.002
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-19",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       44.005,
+       3.524,
+       -22.002
+      ],
+      "to": [
+       45.737,
+       3.878,
+       -22.868
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-20",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       45.737,
+       3.878,
+       -22.868
+      ],
+      "to": [
+       47.469,
+       4.262,
+       -23.734
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-21",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       47.469,
+       4.262,
+       -23.734
+      ],
+      "to": [
+       49.201,
+       4.678,
+       -24.601
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-22",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       49.201,
+       4.678,
+       -24.601
+      ],
+      "to": [
+       50.934,
+       5.124,
+       -25.467
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cable-23",
+      "kind": "primitive",
+      "shape": "segment",
+      "from": [
+       50.934,
+       5.124,
+       -25.467
+      ],
+      "to": [
+       52.666,
+       5.6,
+       -26.333
+      ],
+      "radius": 0.035,
+      "material": {
+       "color": "#3b3e42",
+       "roughness": 0.45,
+       "metalness": 0.35
+      }
+     },
+     {
+      "id": "cabin",
+      "kind": "group",
+      "transform": {
+       "position": [
+        11.091,
+        0,
+        -5.545
+       ],
+       "rotation": [
+        0,
+        116.56505117707799,
+        0
+       ]
+      },
+      "children": [
+       {
+        "id": "cabin-floor",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         1.5,
+         0.12,
+         1.3
+        ],
+        "radius": 0.05,
+        "transform": {
+         "position": [
+          0,
+          0.06,
+          0
+         ]
+        },
+        "material": {
+         "color": "#e3cba4",
+         "roughness": 0.7
+        }
+       },
+       {
+        "id": "cabin-roof",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         1.6,
+         0.14,
+         1.4
+        ],
+        "radius": 0.06,
+        "transform": {
+         "position": [
+          0,
+          2.05,
+          0
+         ]
+        },
+        "material": {
+         "color": "#fbf8f2",
+         "roughness": 0.85
+        }
+       },
+       {
+        "id": "cabin-back",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         1.5,
+         1.95,
+         0.08
+        ],
+        "transform": {
+         "position": [
+          0,
+          1.04,
+          -0.6
+         ]
+        },
+        "material": {
+         "color": "#e3efee",
+         "roughness": 0.06,
+         "glass": true,
+         "metalness": 0.1
+        }
+       },
+       {
+        "id": "cabin-post-a",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         0.08,
+         1.95,
+         0.08
+        ],
+        "transform": {
+         "position": [
+          -0.72,
+          1.04,
+          0.62
+         ]
+        },
+        "material": {
+         "color": "#fbf8f2",
+         "roughness": 0.85
+        }
+       },
+       {
+        "id": "cabin-post-b",
+        "kind": "primitive",
+        "shape": "box",
+        "size": [
+         0.08,
+         1.95,
+         0.08
+        ],
+        "transform": {
+         "position": [
+          0.72,
+          1.04,
+          0.62
+         ]
+        },
+        "material": {
+         "color": "#fbf8f2",
+         "roughness": 0.85
+        }
+       },
+       {
+        "id": "cabin-hanger",
+        "kind": "primitive",
+        "shape": "segment",
+        "from": [
+         0,
+         2.1,
+         0
+        ],
+        "to": [
+         0,
+         2.6,
+         0
+        ],
+        "radius": 0.05,
+        "material": {
+         "color": "#c9ccce",
+         "roughness": 0.35,
+         "metalness": 0.8
+        }
+       },
+       {
+        "id": "cabin-wheel",
+        "kind": "primitive",
+        "shape": "torus",
+        "size": [
+         0.16,
+         0.04
+        ],
+        "transform": {
+         "position": [
+          0,
+          2.6,
+          0
+         ],
+         "rotation": [
+          0,
+          90,
+          0
+         ]
+        },
+        "material": {
+         "color": "#3b3e42",
+         "roughness": 0.85
+        }
+       }
+      ]
+     }
+    ],
+    "cabin": "cabin",
+    "route": [
+     [
+      11.091,
+      0,
+      -5.545
+     ],
+     [
+      12.823,
+      -0.226,
+      -6.411
+     ],
+     [
+      14.556,
+      -0.422,
+      -7.277
+     ],
+     [
+      16.288,
+      -0.588,
+      -8.143
+     ],
+     [
+      18.02,
+      -0.722,
+      -9.01
+     ],
+     [
+      19.752,
+      -0.826,
+      -9.876
+     ],
+     [
+      21.485,
+      -0.9,
+      -10.742
+     ],
+     [
+      23.217,
+      -0.943,
+      -11.608
+     ],
+     [
+      24.949,
+      -0.956,
+      -12.474
+     ],
+     [
+      26.682,
+      -0.937,
+      -13.34
+     ],
+     [
+      28.414,
+      -0.889,
+      -14.207
+     ],
+     [
+      30.146,
+      -0.81,
+      -15.073
+     ],
+     [
+      31.878,
+      -0.7,
+      -15.939
+     ],
+     [
+      33.611,
+      -0.56,
+      -16.805
+     ],
+     [
+      35.343,
+      -0.389,
+      -17.671
+     ],
+     [
+      37.075,
+      -0.187,
+      -18.537
+     ],
+     [
+      38.808,
+      0.044,
+      -19.404
+     ],
+     [
+      40.54,
+      0.307,
+      -20.27
+     ],
+     [
+      42.272,
+      0.6,
+      -21.136
+     ],
+     [
+      44.005,
+      0.924,
+      -22.002
+     ],
+     [
+      45.737,
+      1.278,
+      -22.868
+     ],
+     [
+      47.469,
+      1.662,
+      -23.734
+     ],
+     [
+      49.201,
+      2.078,
+      -24.601
+     ],
+     [
+      50.934,
+      2.524,
+      -25.467
+     ],
+     [
+      52.666,
+      3,
+      -26.333
+     ]
+    ],
+    "board": [
+     9.481,
+     0,
+     -4.74
+    ],
+    "alight": [
+     54.097,
+     3,
+     -27.048
+    ],
+    "floor": 0.12,
+    "period": 24
+   }
+  }
+ ]
+}

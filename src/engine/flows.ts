@@ -9,6 +9,7 @@ import type { Graph, PathDef } from "../schema/living.ts";
 import { flowPulses, hash01, maxPulses, pointAt, samplePath, tangentAt, type Pulse, type Sampled, type V3 } from "./living-math.ts";
 import { glowTexture } from "./actors.ts";
 import { exactColor, makeExact } from "./exact.ts";
+import { BATCH_LAYER } from "./batch.ts";
 
 export interface LivingWorld {
   paths: PathDef[];
@@ -40,6 +41,17 @@ export interface MeterSpec {
 }
 
 const TAIL = 14;
+const coreGeometry = (style: FlowSpec["style"]) => (style === "dashes" ? new THREE.CapsuleGeometry(1, 5, 4, 10) : new THREE.IcosahedronGeometry(1, 2));
+function coreMaterial() {
+  const m = new THREE.MeshBasicMaterial({ color: "#ffffff", ...additive, toneMapped: true });
+  m.userData.glow = true;
+  return m;
+}
+function haloMaterial() {
+  const m = new THREE.MeshBasicMaterial({ color: "#ffffff", map: glowTexture(), ...additive });
+  m.userData.glow = true;
+  return m;
+}
 const smooth01 = (u: number) => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 const additive = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false } as const;
 
@@ -77,7 +89,17 @@ export class FlowObject {
   private pulses: Pulse[] = [];
   private color = new THREE.Color();
 
-  constructor(public spec: FlowSpec, private warn: (m: string) => void) {}
+  /** pooled: a FlowPool draws the cores and halos; this flow's own stay (on BATCH_LAYER) for picking. */
+  constructor(public spec: FlowSpec, private warn: (m: string) => void, private pooled = false) {}
+
+  /** Pulses to draw this frame, for a FlowPool: [pool key, mesh] (empty when hidden or pathless). */
+  poolParts(): [string, THREE.InstancedMesh][] {
+    const out: [string, THREE.InstancedMesh][] = [];
+    for (let x: THREE.Object3D | null = this.obj; x; x = x.parent) if (!x.visible) return out;
+    if (this.core?.count) out.push([this.style === "dashes" ? "core:dashes" : "core:dots", this.core]);
+    if (this.halo?.count) out.push(["halo", this.halo]);
+    return out;
+  }
 
   /** (Re)build geometry when the path it follows changed. */
   setWorld(w: LivingWorld) {
@@ -123,11 +145,8 @@ export class FlowObject {
     const path = this.path!;
     this.color.set(this.spec.color ?? "#9dff3a");
     const n = maxPulses(path.length, this.rate, this.speed, path.closed);
-    const coreGeo = this.style === "dashes" ? new THREE.CapsuleGeometry(1, 5, 4, 10) : new THREE.IcosahedronGeometry(1, 2);
     // Cores: per-pulse colours pre-compensated for tone mapping (exact.ts), so they stay saturated on both backends.
-    const coreMat = new THREE.MeshBasicMaterial({ color: "#ffffff", ...additive, toneMapped: true });
-    coreMat.userData.glow = true;
-    const core = new THREE.InstancedMesh(coreGeo, coreMat, n);
+    const core = new THREE.InstancedMesh(coreGeometry(this.style), coreMaterial(), n);
     core.frustumCulled = false;
     core.setColorAt(0, _c);
     core.renderOrder = 6;
@@ -135,15 +154,14 @@ export class FlowObject {
     this.obj.add(core);
     const haloPer = this.style === "comet" ? TAIL : this.style === "dashes" ? 3 : 1;
     if (this.spec.glow !== false || this.style === "comet") {
-      const haloMat = new THREE.MeshBasicMaterial({ color: "#ffffff", map: glowTexture(), ...additive });
-      haloMat.userData.glow = true;
-      const halo = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), haloMat, n * haloPer);
+      const halo = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), haloMaterial(), n * haloPer);
       halo.frustumCulled = false;
       halo.setColorAt(0, _c);
       halo.renderOrder = 7;
       this.halo = halo;
       this.obj.add(halo);
     }
+    if (this.pooled) for (const m of [this.core, this.halo]) if (m) m.layers.set(BATCH_LAYER);
     if (this.spec.pipe) this.buildPipe(path);
   }
 
@@ -248,6 +266,90 @@ export class FlowObject {
     }
   }
 }
+
+/**
+ * Live mode: the cores and halos of every flow drawn by a few shared InstancedMeshes in world
+ * space (one per core shape, one for halos) instead of two meshes per flow. Each frame copies
+ * the flows' own instances (posed by FlowObject.update as always) in. Same materials, same
+ * render order (cores 6, halos 7), additive: the same picture in a handful of draw calls.
+ */
+export class FlowPool {
+  readonly root = new THREE.Group();
+  private parts = new Map<string, { mesh: THREE.InstancedMesh; n: number }>();
+  private mw = new THREE.Matrix4();
+
+  constructor() {
+    this.root.name = "tera-flow-pool";
+    this.root.matrixAutoUpdate = false;
+  }
+
+  private part(key: string, need: number) {
+    let p = this.parts.get(key);
+    if (p && p.mesh.instanceMatrix.count >= need) return p;
+    const cap = Math.max(64, need * 2, p ? p.mesh.instanceMatrix.count * 2 : 0);
+    const geo = key === "halo" ? new THREE.PlaneGeometry(1, 1) : coreGeometry(key === "core:dashes" ? "dashes" : "dots");
+    const mesh = new THREE.InstancedMesh(geo, key === "halo" ? haloMaterial() : coreMaterial(), cap);
+    mesh.setColorAt(0, _c.setRGB(1, 1, 1));
+    mesh.frustumCulled = false;
+    mesh.renderOrder = key === "halo" ? 7 : 6;
+    mesh.raycast = () => {};
+    mesh.name = `flow-pool:${key}`;
+    if (p) {
+      mesh.instanceMatrix.array.set(p.mesh.instanceMatrix.array.subarray(0, p.n * 16));
+      mesh.instanceColor!.array.set(p.mesh.instanceColor!.array.subarray(0, p.n * 3));
+      p.mesh.removeFromParent();
+      p.mesh.geometry.dispose();
+      (p.mesh.material as THREE.Material).dispose();
+      p.mesh.dispose();
+    }
+    const n = p?.n ?? 0;
+    p = { mesh, n };
+    this.parts.set(key, p);
+    this.root.add(mesh);
+    return p;
+  }
+
+  /** Copy this frame's pulses of every flow in (after the flows' own update). */
+  gather(flows: Iterable<FlowObject>) {
+    for (const p of this.parts.values()) p.n = 0;
+    for (const f of flows) {
+      const parts = f.poolParts();
+      if (!parts.length) continue;
+      f.obj.updateWorldMatrix(true, false);
+      const W = f.obj.matrixWorld;
+      const ident = W.equals(IDENTITY);
+      for (const [key, src] of parts) {
+        const p = this.part(key, (this.parts.get(key)?.n ?? 0) + src.count);
+        const dm = p.mesh.instanceMatrix.array as Float32Array, sm = src.instanceMatrix.array as Float32Array;
+        const dc = p.mesh.instanceColor!.array as Float32Array, sc = src.instanceColor?.array as Float32Array | undefined;
+        for (let i = 0; i < src.count; i++, p.n++) {
+          if (ident) dm.set(sm.subarray(i * 16, i * 16 + 16), p.n * 16);
+          else this.mw.fromArray(sm, i * 16).premultiply(W).toArray(dm, p.n * 16);
+          if (sc) dc.set(sc.subarray(i * 3, i * 3 + 3), p.n * 3);
+          else dc.fill(1, p.n * 3, p.n * 3 + 3);
+        }
+      }
+    }
+    for (const p of this.parts.values()) {
+      p.mesh.count = p.n;
+      p.mesh.visible = p.n > 0;
+      p.mesh.instanceMatrix.needsUpdate = true;
+      p.mesh.instanceColor!.needsUpdate = true;
+    }
+  }
+
+  dispose() {
+    for (const p of this.parts.values()) {
+      p.mesh.removeFromParent();
+      p.mesh.geometry.dispose();
+      (p.mesh.material as THREE.Material).dispose();
+      p.mesh.dispose();
+    }
+    this.parts.clear();
+  }
+}
+
+const IDENTITY = new THREE.Matrix4();
 
 /** Green → amber → red by load. */
 export function loadColor(v: number, out = new THREE.Color()): THREE.Color {

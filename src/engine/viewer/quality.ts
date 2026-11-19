@@ -15,6 +15,8 @@ export interface QualityLevel {
   post: boolean;
   /** Shadow map size cap in texels, 0 = as authored. */
   shadow: number;
+  /** false: no shadows at all (the shadow pass draws the whole scene again: half the draw calls). */
+  shadows?: boolean;
 }
 
 export const LEVELS: readonly QualityLevel[] = [
@@ -22,7 +24,7 @@ export const LEVELS: readonly QualityLevel[] = [
   { name: "medium", dprCap: 1.5, post: true, shadow: 2048 },
   { name: "low", dprCap: 1.25, post: false, shadow: 1024 },
   { name: "lower", dprCap: 1, post: false, shadow: 1024 },
-  { name: "lowest", dprCap: 0.75, post: false, shadow: 512 },
+  { name: "lowest", dprCap: 0.75, post: false, shadow: 512, shadows: false },
 ];
 
 export const levelIndex = (name: string | null | undefined): number => LEVELS.findIndex((l) => l.name === name);

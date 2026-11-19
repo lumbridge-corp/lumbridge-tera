@@ -1,0 +1,5 @@
+{ "tera": "camera/v1", "world": "screens", "fps": 30, "width": 1280, "height": 720, "duration": 6,
+  "shots": [ { "id": "wall", "start": 0, "end": 6, "kind": "keys", "path": "catmull", "ease": "inOutSine",
+    "keys": [ { "t": 0, "position": [-5.4, 1.9, 4.2], "target": [-5.4, 1.75, -0.47], "fov": 40 }, { "t": 6, "position": [5.4, 1.9, 4.2], "target": [5.4, 1.75, -0.47], "fov": 40 } ] } ],
+  "events": [ { "t": 3, "ops": [ { "op": "screen", "id": "tv-off", "content": { "kind": "video", "src": "assets/test.mp4" } },
+                                 { "op": "screen", "id": "tv-video", "content": { "kind": "off" } } ] } ] }

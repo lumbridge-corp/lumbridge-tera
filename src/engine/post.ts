@@ -93,7 +93,7 @@ function glowMaterial(cache: WeakMap<THREE.Material, THREE.MeshBasicMaterial>, m
     cache.set(m, b);
   }
   if (exact) b.color.copy(exact);
-  else if (lit) b.color.copy(std.emissive).multiplyScalar(std.emissiveIntensity);
+  else if (lit) b.color.copy(std.emissive).multiplyScalar(std.emissiveIntensity * ((ud.glowScale as number | undefined) ?? 1)); // screens glow dimly
   else b.color.setRGB(0, 0, 0);
   b.map = lit && !exact ? std.emissiveMap ?? null : null;
   b.side = m.side;
@@ -111,6 +111,7 @@ function withGlowOnly(scene: THREE.Scene, cache: WeakMap<THREE.Material, THREE.M
   const swapped: [THREE.Mesh, THREE.Material | THREE.Material[]][] = [];
   const hidden: THREE.Object3D[] = [];
   scene.traverseVisible((o) => {
+    if ((o.layers.mask & 1) === 0) return; // not drawn by the camera (batched originals): nothing to dress
     if ((o.userData.tera === "sky" && !(o as THREE.Light).isLight) || (o as THREE.Sprite).isSprite) return void hidden.push(o);
     const mesh = o as THREE.Mesh;
     if (!mesh.material || !(mesh.isMesh || (o as THREE.Line).isLine || (o as THREE.Points).isPoints)) return;

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { WorldPack } from "../../schema/index.ts";
-import { buildPresets, countAgents, describe, legendOf, parseSavedView, pretty, resolveSelection, splitTitle } from "./model.ts";
+import { buildPresets, countAgents, countTagged, describe, legendOf, parseSavedView, pretty, resolveSelection, splitTitle } from "./model.ts";
 
 const world = WorldPack.parse({
   tera: "world/v1",
@@ -86,4 +86,23 @@ test("model: saved views are validated", () => {
   assert.equal(parseSavedView("{bad"), null);
   assert.equal(parseSavedView(JSON.stringify({ pose: { position: [1, 2], target: [0, 0, 0] } })), null);
   assert.deepEqual(parseSavedView(JSON.stringify({ preset: "overview", pose: { position: [1, 2, 3], target: [0, 0, 0], fov: 500 } })), { preset: "overview", pose: { position: [1, 2, 3], target: [0, 0, 0], fov: 45 } });
+});
+
+test("model: a journey robot's card shows its own kind, title and facts (no tags), and counts by tag", () => {
+  const j = {
+    ...world,
+    entities: [
+      ...world.entities,
+      { id: "j-1", kind: "actor", label: "brain chat", tags: ["live", "journey"], move: { to: "lab", stops: [{ to: "lab", dwell: 2 }] }, card: { kind: "Journey", title: "brain chat", facts: [{ label: "model", value: "model-a" }, { label: "latency", value: "1.4 s" }] } },
+      { id: "j-2", kind: "actor", tags: ["journey"], visible: false },
+      { id: "j-3", kind: "actor", tags: ["journey"], move: { to: "lab", stops: [{ to: "lab", dwell: 1 }] } },
+    ],
+  } as unknown as typeof world;
+  const c = describe(j, "j-1")!;
+  assert.equal(c.kind, "Journey");
+  assert.equal(c.title, "brain chat");
+  assert.deepEqual(c.facts, [{ label: "model", value: "model-a" }, { label: "latency", value: "1.4 s" }]);
+  assert.deepEqual(c.chips, []);
+  assert.equal(describe(j, "j-3")!.detail, "via Lab → Lab");
+  assert.equal(countTagged(j, "journey"), 2);
 });

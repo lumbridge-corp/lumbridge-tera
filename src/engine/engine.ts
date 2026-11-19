@@ -28,6 +28,9 @@ import type { Box } from "../bridge/types.ts";
 import { instantiate, loadGLTF, loadSplats, spark } from "./assets.ts";
 import { Living, isLiving } from "./living.ts";
 import { LIVE_LABELS } from "./label-fit.ts";
+import { Screens } from "./screen.ts";
+import { composeIslands, islandEntityId } from "./islands.ts";
+import { BATCH_LAYER, StaticBatcher, type BatchCandidate } from "./batch.ts";
 
 export type RendererPref = "auto" | "webgpu" | "webgl2";
 
@@ -44,6 +47,12 @@ export interface EngineOptions {
   skyTime?: string;
   /** Live mode: sky time scale override (`?timeScale=`). */
   skyTimeScale?: number;
+  /**
+   * Static batching (batch.ts): still primitives sharing a material draw as one mesh per space
+   * cell, and flows share their pulse meshes. Default: on in live mode, off in render mode (frames
+   * stay byte-identical to earlier engines); true / false force it (`?batch=1|0`).
+   */
+  batch?: boolean;
 }
 
 /** Live-mode clock of a real sky: anchored sky time + rate, with an optional eased jump. */
@@ -68,6 +77,8 @@ export interface LiveQuality {
   post: boolean;
   /** Shadow map size cap in texels, 0 = as authored. */
   shadowCap: number;
+  /** false: no shadow maps at all (lights stop casting: the shadow pass re-draws the scene). */
+  shadows?: boolean;
 }
 
 const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
@@ -98,7 +109,12 @@ function signature(e: Entity): string {
   return JSON.stringify({ ...e, transform: undefined, visible: undefined, tags: undefined, children: undefined });
 }
 
-function applyTransform(o: THREE.Object3D, t: Transform | undefined, visible: boolean | undefined) {
+/**
+ * Set an entity object's transform. `fixed` (live mode): compose its matrix now and stop three
+ * from recomposing it every frame (most entities never move; the engine calls this again when
+ * one does: a sync, a tween step).
+ */
+function applyTransform(o: THREE.Object3D, t: Transform | undefined, visible: boolean | undefined, fixed = false) {
   const tr = t ?? {};
   if (tr.position) o.position.fromArray(tr.position);
   // Hemisphere and directional lights take their direction from position: never zero
@@ -111,6 +127,10 @@ function applyTransform(o: THREE.Object3D, t: Transform | undefined, visible: bo
   else if (typeof tr.scale === "number") o.scale.setScalar(tr.scale);
   else o.scale.fromArray(tr.scale);
   o.visible = visible ?? true;
+  if (fixed) {
+    o.updateMatrix();
+    o.matrixAutoUpdate = false;
+  }
 }
 
 function disposeObject(o: THREE.Object3D) {
@@ -173,6 +193,7 @@ export function primitiveMaterial(e: Pick<PrimitiveEntity, "material">): THREE.M
     const night = new THREE.Color(m.night.emissive ?? m.emissive ?? m.color ?? "#ffd9a0").multiplyScalar(m.night.intensity ?? 1.5);
     std.userData.teraNight = { day, night };
   }
+  if (m.bloom === false) std.userData.glowScale = 0; // post.ts glow pass: an unlit occluder
   return std;
 }
 
@@ -196,6 +217,42 @@ function primitiveFlags(mesh: THREE.Mesh, e: PrimitiveEntity) {
   const solid = !m.glass && !m.glowExact;
   mesh.castShadow = e.shape !== "plane" && (m.opacity ?? 1) > 0.3 && solid;
   mesh.receiveShadow = solid;
+}
+
+/** Can a primitive's mesh (or a repeat's InstancedMesh of it) join a static batch (opaque, not glass / screen / ground, no children, no per-copy tint)? */
+function batchable(e: PrimitiveEntity, mesh: THREE.Object3D): mesh is THREE.Mesh {
+  const m = e.material ?? {};
+  if (m.screen || m.glass || (m.opacity ?? 1) < 1 || e.tags?.includes("dynamic")) return false;
+  const mat = (mesh as THREE.Mesh).material as THREE.Material | undefined;
+  if ((mesh as THREE.InstancedMesh).isInstancedMesh && (mesh as THREE.InstancedMesh).instanceColor) return false;
+  return !!(mesh as THREE.Mesh).isMesh && !!mat && !Array.isArray(mat) && !mat.transparent && !mesh.userData.ground && mesh.children.length === 0;
+}
+
+/**
+ * Can the base colour of a batchable primitive ride per vertex? Only for a lit standard material
+ * whose colour is nothing but the diffuse colour (not its glow, night or exact emissive).
+ */
+function colourPerVertex(m: NonNullable<PrimitiveEntity["material"]>): boolean {
+  return !m.glowExact && !m.glass && !(m.glow && !m.emissive) && !(m.night && !m.night.emissive && !m.emissive);
+}
+
+/** How a batchable mesh joins a batch: its key (before the space cell), per-vertex tint and material. */
+function batchJoin(e: PrimitiveEntity, mesh: THREE.Mesh): Pick<BatchCandidate, "key" | "tint" | "material"> {
+  const m = e.material ?? {};
+  const vc = colourPerVertex(m);
+  const { color, ...rest } = m;
+  const side = (mesh.material as THREE.Material).side;
+  return {
+    key: `${JSON.stringify(vc ? rest : m)}|${vc ? "vc" : ""}|${side}|${+mesh.castShadow}${+mesh.receiveShadow}`,
+    // the colour exactly as the material would hold it (linear, from the sRGB hex)
+    tint: vc ? ((mesh.material as THREE.MeshStandardMaterial).color?.clone() ?? new THREE.Color(color ?? "#cccccc")) : null,
+    material: () => {
+      const mat = primitiveMaterial(vc ? { material: { ...m, color: "#ffffff" } } : e);
+      if (vc) mat.vertexColors = true;
+      mat.side = side;
+      return mat;
+    },
+  };
 }
 
 function matrixOf(t: Transform | undefined, out = new THREE.Matrix4()): THREE.Matrix4 {
@@ -239,6 +296,8 @@ export class Engine {
   private xrPresenting: XrMode | null = null;
   /** Actors, flows and meters (living.ts). */
   readonly living: Living;
+  /** Screens (material.screen): videos, images, youtube cards (screen.ts). */
+  readonly screens: Screens;
   /** Asset loads started / finished since the page opened (the live loading bar). */
   readonly loadStats = { started: 0, done: 0 };
   private frameHooks = new Set<(dt: number) => void>();
@@ -253,6 +312,11 @@ export class Engine {
   private nightApplied = -1;
   private lastSkyEvent: { n: number; night: boolean; at: number } | null = null;
   private skyOpts: { time?: string; timeScale?: number };
+  /** Mounted islands (CONTRACT.md 1e): island id -> its own world (unprefixed; island live ops apply here). */
+  private islandWorlds = new Map<string, WorldPack>();
+  private islandWarned = new Set<string>();
+  /** Live mode: static batches of still primitives (batch.ts), null = off. */
+  readonly batcher: StaticBatcher | null = null;
 
   constructor(
     private host: HTMLElement,
@@ -269,13 +333,28 @@ export class Engine {
       this.pref = "webgl2"; // the safe XR path (Spark splats are WebGL2 too)
       this.sky.sun.shadow.mapSize.set(2048, 2048);
     }
+    // Live mode: the frame loop updates world matrices itself (prepareFrame), not every pass again.
+    if (!renderMode) this.scene.matrixWorldAutoUpdate = false;
     this.living = new Living(this.scene, renderMode, {
       resolve: (src) => this.resolve(src),
       track: (p) => this.track(p),
       warn: (m) => this.warn(m),
       loadModel: (url) => loadGLTF(url).then((g) => instantiate(g)),
-    });
+    }, { poolFlows: opts.batch ?? !renderMode });
     if (opts.labelFit ?? !renderMode) this.living.actors.labelFit = LIVE_LABELS;
+    this.screens = new Screens({ resolve: (src) => this.resolve(src), track: (p) => this.track(p), warn: (m) => this.warn(m), renderMode });
+    if (opts.batch ?? !renderMode) {
+      this.batcher = new StaticBatcher({
+        added: (mesh) => {
+          this.registerNightMats(mesh);
+          this.nightApplied = -1;
+        },
+        removed: (mesh) => {
+          for (const x of this.nightMats) if (x.mat === mesh.material) this.nightMats.delete(x);
+        },
+      });
+      this.scene.add(this.batcher.root);
+    }
   }
 
   // ---------------------------------------------------------------- renderer
@@ -359,6 +438,7 @@ export class Engine {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.living.actors.viewportH = h;
+    this.living.actors.viewportW = w;
   }
 
   setPose(p: CameraPose) {
@@ -405,6 +485,12 @@ export class Engine {
     this.skyClock.key = "";
     for (const n of this.nodes.values()) this.disposeNode(n);
     this.nodes.clear();
+    this.batcher?.reset();
+    // a new home world (a live snapshot) keeps the islands it still lists; render mode fetches them all
+    for (const id of [...this.islandWorlds.keys()]) if (this.renderMode || !this.base.islands?.some((r) => r.id === id)) this.islandWorlds.delete(id);
+    this.islandWarned.clear();
+    // render mode: every island at load (deterministic frames); the live viewer loads them by distance
+    if (this.renderMode && this.base.islands?.length) await this.fetchIslands(this.base);
     await this.ensureBackend(await this.chooseBackend(this.base));
     await this.sync(structuredClone(this.base));
     const cam = this.base.cameras?.default;
@@ -416,6 +502,82 @@ export class Engine {
   get(): WorldPack {
     if (!this.base) throw new Error("no world loaded");
     return structuredClone(this.base);
+  }
+
+  // ---------------------------------------------------------------- islands (CONTRACT.md 1e)
+
+  /** The world as the base + script time make it (what apply() and the island calls re-sync). */
+  private baseNow(): WorldPack {
+    if (!this.base) throw new Error("no world loaded");
+    return this.script && this.scriptT !== null ? worldAt(this.base, this.script.events, this.scriptT).world : structuredClone(this.base);
+  }
+
+  /** Render mode: fetch and mount every island of `w` (relative to the world's URL). */
+  private async fetchIslands(w: WorldPack) {
+    await Promise.all((w.islands ?? []).map(async (ref) => {
+      try {
+        const r = await this.track(fetch(this.resolve(ref.src)));
+        if (!r.ok) throw new Error(`${r.status} for ${ref.src}`);
+        const res = WorldPackSchema.safeParse(await r.json());
+        if (!res.success) throw new Error("invalid world: " + res.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+        this.islandWorlds.set(ref.id, res.data);
+      } catch (err) {
+        this.warn(`island "${ref.id}": ${(err as Error).message} (drawn as its impostor)`);
+      }
+    }));
+  }
+
+  /** Mount an island's full world (replacing its impostor), or replace it (a live snapshot). */
+  async mountIsland(id: string, world: WorldPack): Promise<void> {
+    if (!this.base?.islands?.some((r) => r.id === id)) throw new Error(`no island "${id}" in this world`);
+    const res = WorldPackSchema.safeParse(world);
+    if (!res.success) throw new Error(`island "${id}": invalid world: ` + res.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    this.islandWorlds.set(id, res.data);
+    await this.sync(this.baseNow());
+  }
+
+  /** Back to the island's impostor. */
+  async unmountIsland(id: string): Promise<void> {
+    if (!this.islandWorlds.delete(id) || !this.base) return;
+    await this.sync(this.baseNow());
+  }
+
+  /** Apply an island's live ops to its own world (its own ids), then re-compose. */
+  async applyIsland(id: string, ops: Op[]): Promise<{ ok: boolean; applied: number; error?: string }> {
+    const w = this.islandWorlds.get(id);
+    const ref = this.base?.islands?.find((r) => r.id === id);
+    if (!w || !ref) return { ok: false, applied: 0, error: `island "${id}" is not mounted` };
+    let applied = 0, error: string | undefined;
+    const now = performance.now() / 1000;
+    for (const op of ops) {
+      const found = op.op === "animate" ? findEntity(w.entities, op.id)?.entity : undefined;
+      const before = found ? structuredClone(found.transform) : undefined;
+      try {
+        applyOp(w, op);
+      } catch (err) {
+        error = `island ${id} op ${applied} (${(op as { op?: string }).op ?? "?"}): ${(err as Error).message}`;
+        break;
+      }
+      if (op.op === "animate" && !this.renderMode && found) {
+        // actors are posed in world space: move their tween by the island's offset
+        const o = found.kind === "actor" ? ref.offset : null;
+        const sh = (t: typeof op.to | undefined) => (o && t?.position ? { ...t, position: [t.position[0] + o[0], t.position[1] + o[1], t.position[2] + o[2]] as [number, number, number] } : t);
+        this.tweens.set(islandEntityId(id, op.id), { from: sh(before) as AnimTo | undefined, to: sh(op.to)!, t0: now, duration: op.duration, ease: op.ease });
+      }
+      applied++;
+    }
+    await this.sync(this.baseNow());
+    return error ? { ok: false, applied, error } : { ok: true, applied };
+  }
+
+  /** Islands of the loaded world and whether each is mounted in full. */
+  islands(): { id: string; name: string; mounted: boolean }[] {
+    return (this.base?.islands ?? []).map((r) => ({ id: r.id, name: r.name, mounted: this.islandWorlds.has(r.id) }));
+  }
+
+  /** A mounted island's own world (read only), or null. */
+  islandWorld(id: string): WorldPack | null {
+    return this.islandWorlds.get(id) ?? null;
   }
 
   /** Apply ops to the world (the base the script replays from). */
@@ -653,6 +815,12 @@ export class Engine {
   // ---------------------------------------------------------------- reconcile
 
   private async sync(world: WorldPack) {
+    this.solidKey++;
+    if (world.islands?.length) {
+      const c = composeIslands(world, this.islandWorlds);
+      for (const w of c.warnings) if (!this.islandWarned.has(w)) { this.islandWarned.add(w); this.warn(w); }
+      world = c.world;
+    }
     if (this.pref === "auto" && this.backend === "webgpu" && hasSplats(world.entities)) await this.ensureBackend("webgl2");
     setExactExposure(world.environment?.exposure ?? 1);
     this.living.setWorld(world);
@@ -670,7 +838,7 @@ export class Engine {
         n.entity = e;
         if (isLiving(e)) this.living.upsert(e);
         if (n.obj.parent !== parent) parent.add(n.obj);
-        applyTransform(n.obj, e.transform, e.visible);
+        applyTransform(n.obj, e.transform, e.visible, !this.renderMode);
         if (e.kind === "group") walk(e.children, n.obj);
       }
     };
@@ -681,11 +849,35 @@ export class Engine {
       this.nodes.delete(id);
     }
     this.current = world;
+    if (this.batcher) this.updateBatches();
     if (this.handle) {
       await this.track(this.sky.apply(world, this.resolve, this.handle.renderer, this.handle.backend === "webgpu"));
       await this.updatePost(world);
     }
-    if (this.quality.shadowCap) this.applyShadowCaps(); // lights built by this sync
+    if (this.quality.shadowCap || this.quality.shadows === false) this.applyShadowCaps(); // lights built by this sync
+  }
+
+  /** Live mode: batch the still primitives; anything tweening (or that changed) stays its own mesh. */
+  private updateBatches() {
+    const b = this.batcher!;
+    for (const id of this.tweens.keys()) {
+      const n = this.nodes.get(id);
+      if (n) b.pin(n.obj);
+    }
+    this.scene.updateMatrixWorld();
+    const cands: BatchCandidate[] = [];
+    for (const [id, n] of this.nodes) {
+      const e = n.entity;
+      if (e.kind === "primitive") {
+        if (batchable(e, n.obj)) cands.push({ id, part: id, mesh: n.obj, ...batchJoin(e, n.obj) });
+      } else if (e.kind === "repeat" && !e.tags?.includes("dynamic")) {
+        n.obj.children.forEach((c, i) => {
+          const leaf = c.userData.teraLeaf as PrimitiveEntity | undefined;
+          if (leaf && batchable(leaf, c)) cands.push({ id, part: `${id}#${i}`, mesh: c, ...batchJoin(leaf, c) });
+        });
+      }
+    }
+    b.sync(cands);
   }
 
   /** (Re)build the post pipeline when environment.post or the renderer changed. */
@@ -725,6 +917,7 @@ export class Engine {
     for (const x of n.extra) x.removeFromParent();
     n.mixer?.stopAllAction();
     if (isLiving(n.entity)) this.living.remove(n.entity);
+    if (this.screens.size) this.screens.dispose(n.obj);
     // Only this node's own resources: children belong to their own nodes, and model /
     // splat data is shared through the asset cache.
     if (n.entity.kind === "primitive" || n.entity.kind === "text" || n.entity.kind === "repeat") disposeObject(n.obj);
@@ -735,6 +928,10 @@ export class Engine {
     const node: Node = { entity: e, sig, obj: new THREE.Group(), extra: [], disposed: false };
     switch (e.kind) {
       case "primitive": {
+        if (e.material?.screen) {
+          node.obj = this.screens.build(e, primitiveGeometry(e));
+          break;
+        }
         const mat = primitiveMaterial(e);
         if (primitiveDoubleSided(e)) mat.side = THREE.DoubleSide;
         const mesh = new THREE.Mesh(primitiveGeometry(e), mat);
@@ -929,6 +1126,7 @@ export class Engine {
         });
         mesh.computeBoundingBox();
         mesh.computeBoundingSphere();
+        mesh.userData.teraLeaf = x; // static batching (live mode): what the copies are
         root.add(mesh);
       } else if (x.kind === "text") {
         const proto = buildText(x);
@@ -977,6 +1175,7 @@ export class Engine {
   private prepareFrame() {
     this.camera.updateMatrixWorld();
     this.living.update(this.camera, this.renderMode || this.scriptT !== null ? this.time : undefined);
+    if (!this.renderMode) this.screens.update(this.camera);
     this.scene.updateMatrixWorld();
     const skyMs = this.sky.isReal ? this.skyTimeMs() : null;
     if (skyMs !== null) {
@@ -1004,12 +1203,19 @@ export class Engine {
     const info = this.sky.info;
     this.applyNight(info.nightness);
     if (info.mode === "real" || info.mode === "sun") this.emitSky(info);
+    if (!this.renderMode) this.scene.updateMatrixWorld(); // after the sky moved its parts (passes no longer do it)
+    if (this.batcher?.tick()) this.updateBatches(); // handed-out objects: moved ones leave, idle ones come back
     const box = this.casterBox.makeEmpty();
     const lights: THREE.DirectionalLight[] = [];
     this.scene.traverseVisible((o) => {
       if (o.userData.tera === "sky" && o !== this.sky.sun) return;
       if ((o as THREE.DirectionalLight).isDirectionalLight && (o as THREE.Light).castShadow) lights.push(o as THREE.DirectionalLight);
-      else if ((o as THREE.Mesh).isMesh && o.castShadow) box.union(this.tmpBox.setFromObject(o));
+      else if ((o as THREE.Mesh).isMesh && o.castShadow) {
+        // a batch stands in for its members: their own boxes, kept from when it was built (same frustum)
+        if (StaticBatcher.batched(o)) return;
+        const cb = StaticBatcher.casterBox(o);
+        box.union(cb ?? this.tmpBox.setFromObject(o));
+      }
     });
     if (box.isEmpty()) return;
     const sphere = box.getBoundingSphere(new THREE.Sphere());
@@ -1026,6 +1232,8 @@ export class Engine {
   private async finalFrame() {
     const h = this.handle;
     if (!h) throw new Error("no renderer");
+    // render mode: every screen video at the script time (deterministic frames)
+    if (this.renderMode && this.screens.size) await this.screens.seek(this.scriptT ?? 0);
     this.prepareFrame();
     await h.renderer.compileAsync(this.scene, this.camera);
     this.draw();
@@ -1060,7 +1268,7 @@ export class Engine {
           continue;
         }
         const u = progress(now, tw.t0, tw.duration, tw.ease ?? "inOutCubic");
-        applyTransform(n.obj, lerpTransform(tw.from, tw.to, u), n.entity.visible);
+        applyTransform(n.obj, lerpTransform(tw.from, tw.to, u), n.entity.visible, !this.renderMode);
         if (u >= 1) this.tweens.delete(id);
       }
       for (const n of this.nodes.values()) n.mixer?.update(dt);
@@ -1082,6 +1290,7 @@ export class Engine {
   setPaused(paused: boolean) {
     if (this.renderMode || paused === this.paused) return;
     this.paused = paused;
+    this.screens.setHidden(paused);
     if (paused && !this.xrPresenting) this.handle?.renderer.setAnimationLoop(null);
     else if (!paused) this.startLoop();
   }
@@ -1106,7 +1315,7 @@ export class Engine {
         await this.updatePost(this.current);
       }
     }
-    if (prev.shadowCap !== this.quality.shadowCap) this.applyShadowCaps();
+    if (prev.shadowCap !== this.quality.shadowCap || prev.shadows !== this.quality.shadows) this.applyShadowCaps();
   }
 
   /** Pick what is under a canvas point: the nearest entity mesh or actor. */
@@ -1115,6 +1324,7 @@ export class Engine {
     if (!canvas) return null;
     const r = canvas.getBoundingClientRect();
     const ray = new THREE.Raycaster();
+    ray.layers.enable(BATCH_LAYER); // batched originals: not drawn, still picked
     ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), this.camera);
     const hit = ray.intersectObjects(this.roots(), true).find((x) => x.object.visible && this.entityOf(x.object));
     const actor = this.living.actors.pick(ray.ray);
@@ -1128,12 +1338,62 @@ export class Engine {
     const len = from.distanceTo(to);
     if (len < 1e-3) return false;
     const ray = new THREE.Raycaster(from, to.clone().sub(from).normalize(), 0.05, len);
+    ray.layers.enable(BATCH_LAYER);
     return ray.intersectObjects(this.roots(), true).some((x) => {
       if (!x.object.visible) return false;
       const m = (x.object as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
       const mat = Array.isArray(m) ? m[0] : m;
       return !!mat && !mat.userData.teraGlass && !(mat.transparent && mat.opacity < 0.6) && !(x.object as THREE.Line).isLine && !(x.object as THREE.Sprite).isSprite;
     });
+  }
+
+  private solidCache: { at: number; center: THREE.Vector3; radius: number; meshes: THREE.Object3D[]; key: number } | null = null;
+  private solidKey = 0;
+
+  /**
+   * Live mode (walking / flying players): is the straight move from a to b blocked by something
+   * solid? Unlike obstructed(), glass counts (a window is a wall to walk into); lines, sprites,
+   * points, labels and very see-through veils don't. Only meshes near `a` are tested (cached for
+   * 0.25 s), so a call costs a few bounding-sphere checks.
+   */
+  solidHit(a: [number, number, number], b: [number, number, number]): number | null {
+    const from = new THREE.Vector3(...a), to = new THREE.Vector3(...b);
+    const len = from.distanceTo(to);
+    if (len < 1e-4) return null;
+    const now = performance.now();
+    const c = this.solidCache;
+    if (!c || c.key !== this.solidKey || now - c.at > 250 || c.center.distanceTo(from) > c.radius * 0.5) {
+      const radius = Math.max(12, len * 3);
+      const center = from.clone();
+      const sphere = new THREE.Sphere();
+      const meshes: THREE.Object3D[] = [];
+      this.scene.updateMatrixWorld();
+      for (const root of this.roots()) {
+        root.traverseVisible((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh || (o as THREE.Sprite).isSprite || o.userData.teraNoCollide) return;
+          const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.Material | undefined;
+          if (!mat || (mat.transparent && (mat.opacity < 0.35 || (mat as THREE.MeshBasicMaterial).map) && !mat.userData.teraGlass) || mat.userData.glow) return;
+          if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+          sphere.copy(m.geometry.boundingSphere!).applyMatrix4(m.matrixWorld);
+          if ((m as THREE.InstancedMesh).isInstancedMesh || sphere.distanceToPoint(center) <= radius) meshes.push(m);
+        });
+      }
+      this.solidCache = { at: now, center, radius, meshes, key: this.solidKey };
+    }
+    const ray = new THREE.Raycaster(from, to.clone().sub(from).normalize(), 0, len);
+    ray.layers.enable(BATCH_LAYER);
+    const hit = ray.intersectObjects(this.solidCache!.meshes, false)[0];
+    return hit ? hit.distance : null;
+  }
+
+  /** Live mode: the three.js object of an entity (to move it locally, e.g. a lift car), or null. */
+  entityObject(id: string): THREE.Object3D | null {
+    const n = this.nodes.get(id);
+    if (!n) return null;
+    this.batcher?.hold(n.obj); // the caller may move it or swap its materials: out of the static batches
+    n.obj.matrixAutoUpdate = true; // and three recomposes its matrix every frame again
+    return n.obj;
   }
 
   /** World box to frame an entity (actors included, at their current pose); null = no extent. */
@@ -1151,9 +1411,12 @@ export class Engine {
   private applyShadowCaps() {
     const caps = [this.xrPresenting ? 1024 : 0, this.renderMode ? 0 : this.quality.shadowCap].filter((c) => c > 0);
     const cap = caps.length ? Math.min(...caps) : 0;
+    const off = !this.renderMode && !this.xrPresenting && this.quality.shadows === false;
     this.scene.traverse((o) => {
       const l = o as THREE.DirectionalLight;
       if (!l.isLight || !l.shadow) return;
+      l.userData.castShadow ??= l.castShadow;
+      l.castShadow = off ? false : l.userData.castShadow;
       l.userData.mapSize ??= l.shadow.mapSize.x;
       const want = cap ? Math.min(cap, l.userData.mapSize) : l.userData.mapSize;
       if (l.shadow.mapSize.x === want && l.shadow.mapSize.y === want) return;
@@ -1177,10 +1440,14 @@ export class Engine {
   }
 
   /** Box of the content without big flat ground planes (tabletop framing). */
-  contentBox(): THREE.Box3 | null {
+  contentBox(opts: { homeOnly?: boolean } = {}): THREE.Box3 | null {
     this.scene.updateMatrixWorld(true);
     const all = new THREE.Box3();
+    // homeOnly: leave out islands in the same sky (their groups, ferries and lifted flows)
+    const isl = opts.homeOnly ? (this.base?.islands ?? []).map((r) => r.id) : [];
     for (const o of this.roots()) {
+      const id = o.userData.teraId as string | undefined;
+      if (isl.length && id && isl.some((k) => id === k || id.startsWith(k + "."))) continue;
       const b = this.boxOf(o);
       if (b.isEmpty()) continue;
       const s = b.getSize(new THREE.Vector3());

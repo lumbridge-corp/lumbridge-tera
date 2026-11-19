@@ -69,6 +69,7 @@ script and writes an MP4 with ffmpeg; the same inputs give the same frames.
 | **MCP server** | `tera-mcp`, a stdio MCP server: create and open worlds, apply ops, find entities with real bounds, take snapshots the agent can see, validate and preview camera scripts, render video, import assets. [docs/mcp.md](docs/mcp.md). |
 | **Camera scripts** | `camera/v1` JSON: shots of keyframes or orbits, easing, events that change the world at a time. `tera validate` checks them; `tera render` turns them into MP4. |
 | **Live viewer** | Loading screen, camera presets, smooth flights, click-to-inspect cards, a live WebSocket feed that moves actors and meters, adaptive quality for phones. [docs/viewer.md](docs/viewer.md). |
+| **Players** | Walk or fly through a world as a little figure of your own, travel between its layers (a lift ride when it has one), and meet everyone else who has it open: avatars with name tags over a pluggable presence transport. [docs/players.md](docs/players.md). |
 | **XR** | Any world opens on a Meta Quest 3 (VR or passthrough AR) or Snap Spectacles from the browser, as a tabletop model or at 1:1. [docs/xr.md](docs/xr.md). |
 | **Gen workers** | Optional HTTP services for an NVIDIA GPU box: one photo → a splat world (NVIDIA Lyra), a photo → a textured model (TRELLIS.2), text → motion (Kimodo). Only commercially usable models are defaults. [workers/README.md](workers/README.md). |
 
@@ -150,6 +151,7 @@ world names (the example worlds use a local file). No telemetry, no calls home.
 - [docs/mcp.md](docs/mcp.md) — the MCP server: setup, tools, a worked session
 - [docs/viewer.md](docs/viewer.md) — the live viewer and its performance policy
 - [docs/sky.md](docs/sky.md) — the real sky, night lights and satellites
+- [docs/screen.md](docs/screen.md) — screens: video, image and YouTube-style cards on a TV or monitor
 - [docs/xr.md](docs/xr.md) — VR and AR on Quest 3 and Spectacles
 - [docs/hyperframes.md](docs/hyperframes.md) — Tera clips in HyperFrames videos
 - [workers/README.md](workers/README.md) — gen workers, models and licences

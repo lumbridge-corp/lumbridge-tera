@@ -210,10 +210,15 @@
   background: var(--hover); color: var(--ink-2); letter-spacing: 0.02em; text-transform: none; font-size: 11px;
 }
 .tv-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); }
-.tv-state[data-state="working"] { background: var(--lime-soft); color: var(--lime-ink); }
-.tv-state[data-state="working"]::before { background: var(--lime-ink); }
-.tv-state[data-state="walking"]::before { background: #3fb6d9; }
+.tv-state[data-state^="working"] { background: var(--lime-soft); color: var(--lime-ink); }
+.tv-state[data-state^="working"]::before { background: var(--lime-ink); }
+.tv-state[data-state^="walking"]::before { background: #3fb6d9; }
 .tv-card-detail { margin: 8px 0 0; color: var(--ink-2); }
+.tv-facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 10px 0 0; font-size: 12px; }
+.tv-facts dt { color: var(--ink-2); }
+.tv-facts dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-icon[aria-pressed="false"] .tv-jn { opacity: 0.5; }
+.tv-jn { font-weight: 600; margin-left: 2px; }
 .tv-meters { display: grid; gap: 7px; margin-top: 12px; }
 .tv-meter { display: grid; grid-template-columns: 52px 1fr 38px; align-items: center; gap: 10px; font-size: 12px; }
 .tv-meter-l { color: var(--ink-2); text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; font-weight: 600; }
@@ -248,6 +253,87 @@
 }
 .tv-toast:empty { opacity: 0; padding: 0; }
 
+/* ---------------------------------------------------------------- player: modes, layers, people (play.ts) */
+.tv-modes {
+  position: absolute; left: 50%; bottom: max(var(--gutter), env(safe-area-inset-bottom));
+  transform: translateX(-50%); display: flex; gap: 2px; padding: 3px; border-radius: 13px;
+  opacity: 0; transition: opacity 0.5s ease 0.3s;
+}
+.tv-ready .tv-modes { opacity: 1; }
+.tv-mode {
+  display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px 0 10px;
+  border: 0; border-radius: 10px; background: transparent; color: var(--ink-2); cursor: pointer; font-weight: 600; font-size: 13px;
+}
+.tv-mode:hover { background: var(--hover); color: var(--ink); }
+.tv-mode[aria-checked="true"] { background: var(--ink); color: var(--panel-solid); }
+.tv-modes ~ .tv-toast { bottom: calc(max(var(--gutter), env(safe-area-inset-bottom)) + 50px); }
+
+.tv-layers {
+  position: absolute; right: max(var(--gutter), env(safe-area-inset-right)); top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 2px; padding: 6px; min-width: 132px;
+  opacity: 0; transition: opacity 0.5s ease 0.3s;
+}
+.tv-ready .tv-layers { opacity: 1; }
+.tv-layers .tv-sec { margin: 2px 8px 4px; }
+.tv-layer {
+  position: relative; display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 34px; padding: 0 10px 0 22px;
+  border: 0; border-radius: 9px; background: transparent; cursor: pointer; text-align: left; font-weight: 550;
+}
+.tv-layer::before { content: ""; position: absolute; left: 10px; top: 50%; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; border: 1.5px solid var(--ink-3); }
+.tv-layer:hover { background: var(--hover); }
+.tv-layer[aria-current="true"] { background: var(--lime-soft); }
+.tv-layer[aria-current="true"]::before { background: var(--lime-ink); border-color: var(--lime-ink); }
+.tv-layer-n { min-width: 18px; height: 18px; padding: 0 5px; display: inline-grid; place-items: center; border-radius: 99px; background: var(--hover); color: var(--ink-2); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* islands in one sky: an island with several layers is its name + its layers; one with one layer is one button */
+.tv-island { display: flex; flex-direction: column; gap: 2px; }
+.tv-island + .tv-island, .tv-island + .tv-island-go, .tv-island-go + .tv-island { margin-top: 4px; }
+.tv-island-name {
+  margin: 2px 0 1px; padding: 4px 10px; border: 0; border-radius: 9px; background: transparent; cursor: pointer; text-align: left;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-2); display: flex; align-items: center; gap: 6px;
+}
+.tv-island-name:hover, .tv-island-name:focus-visible { background: var(--hover); outline: none; }
+.tv-island-name[data-here="true"] { color: var(--ink); cursor: default; }
+.tv-island-name[data-here="true"]:hover { background: transparent; }
+.tv-island-label { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.tv-island-how { font-size: 10.5px; font-weight: 500; color: var(--ink-3); letter-spacing: 0.01em; }
+.tv-island-how[data-going="true"] { color: var(--lime-ink); }
+.tv-island-go:has(.tv-island-how) { height: 40px; }
+.tv-island-name::before, .tv-island-go::before { content: ""; width: 8px; height: 5px; border-radius: 4px 4px 2px 2px / 3px 3px 2px 2px; background: var(--ink-3); flex: none; }
+.tv-island-name[data-here="true"]::before { background: var(--lime-ink); }
+.tv-island .tv-layer { padding-left: 30px; height: 32px; }
+.tv-island .tv-layer::before { left: 18px; }
+.tv-island-go::before { position: absolute; left: 9px; top: 50%; margin-top: -2.5px; border: 0; }
+.tv-island-go[aria-current="true"]::before { background: var(--lime-ink); }
+
+.tv-people { flex: none; display: inline-flex; align-items: center; gap: 5px; padding-left: 10px; border-left: 1px solid var(--line); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tv-people svg { color: var(--ink-3); width: 15px; height: 15px; }
+.tv-people b { font-weight: 600; color: var(--ink); }
+.tv-people[data-status="connecting"], .tv-people[data-status="closed"] { opacity: 0.55; }
+
+.tv-tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+.tv-tag-name {
+  position: absolute; left: 0; top: 0; padding: 3px 9px 3px 8px; border-radius: 99px; white-space: nowrap;
+  font: 600 12px/1.2 var(--font); color: var(--ink); background: var(--panel-solid);
+  box-shadow: 0 1px 2px rgba(28, 31, 23, 0.14), inset 0 0 0 1px var(--line); opacity: 0; will-change: transform;
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis;
+}
+.tv-tag-name::before { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 6px 1px 0; border-radius: 50%; background: var(--c); }
+
+.tv-stick {
+  position: absolute; left: max(20px, env(safe-area-inset-left)); bottom: calc(max(var(--gutter), env(safe-area-inset-bottom)) + 62px);
+  width: 116px; height: 116px; border-radius: 50%; pointer-events: auto; touch-action: none;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); display: grid; place-items: center;
+}
+.tv-stick-knob { width: 46px; height: 46px; border-radius: 50%; background: var(--ink); opacity: 0.85; transition: transform 0.08s; }
+.tv-updown {
+  position: absolute; right: max(20px, env(safe-area-inset-right)); bottom: calc(max(var(--gutter), env(safe-area-inset-bottom)) + 62px);
+  display: flex; flex-direction: column; gap: 8px; pointer-events: auto;
+}
+.tv-updown .tv-icon { width: 54px; height: 54px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); touch-action: none; }
+[data-tera-mode="walk"] .tv-legend, [data-tera-mode="fly"] .tv-legend { display: none; }
+
 /* XR (?xr=vr|ar): xr.ts's own Enter button, restyled to match */
 [data-tera="xr-button"] {
   font: 650 12px/1 var(--font, system-ui) !important; letter-spacing: 0.06em !important;
@@ -273,6 +359,18 @@
   .tv-time { gap: 7px; padding-left: 9px; }
   .tv-time-range { width: 96px; }
   .tv-time-date { display: none; }
+  .tv-mode span { display: none; }
+  .tv-mode { padding: 0 10px; }
+  .tv-people { padding-left: 8px; }
+  .tv-layers { top: auto; transform: none; bottom: calc(max(var(--gutter), env(safe-area-inset-bottom)) + 52px); min-width: 0; padding: 4px; }
+  .tv-layers .tv-sec { display: none; }
+  .tv-island-name { margin-top: 2px; font-size: 11px; }
+  .tv-island .tv-layer { padding-left: 22px; }
+  .tv-island .tv-layer::before { left: 10px; }
+  .tv-card:not([hidden]) ~ .tv-modes, .tv-card:not([hidden]) ~ .tv-layers { display: none; }
+  /* with the Orbit · Walk · Fly bar at the bottom centre, the legend sits above it on the left
+     (the Layers panel holds the right) instead of underneath the bar */
+  .tv:has(.tv-modes) .tv-legend { left: max(var(--gutter), env(safe-area-inset-left)); transform: none; bottom: calc(max(var(--gutter), env(safe-area-inset-bottom)) + 50px); }
 }
 @media (max-width: 400px) {
   .tv-tools .tv-icon { min-width: 32px; }

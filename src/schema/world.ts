@@ -1,6 +1,7 @@
 // World pack schema — tera "world/v1". Source of truth for CONTRACT.md section 1.
 import { z } from "zod";
 import { ActorFields, FlowFields, Graph, MeterFields, PathDef } from "./living.ts";
+import { ResidentsField, SandboxesField } from "./residents.ts";
 
 export const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
 export type Vec3 = z.infer<typeof Vec3>;
@@ -14,6 +15,64 @@ export const Transform = z.object({
 });
 export type Transform = z.infer<typeof Transform>;
 
+/**
+ * What a screen shows (material.screen.content, the `screen` op). `video`: a same-origin mp4,
+ * muted and looping; `image`: a picture; `youtube`: a card drawn from a thumbnail image with
+ * title, channel and a live / playing badge (no third-party player); `panel`: a small calm
+ * dashboard drawn by the engine (title, status, rows of bars + values, a sparkline), all text
+ * and numbers from the world; `off`: dark glass.
+ */
+export const ScreenContent = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("video"), src: z.string().min(1), title: z.string().max(200).optional() }),
+  z.object({ kind: z.literal("image"), src: z.string().min(1), title: z.string().max(200).optional() }),
+  z.object({
+    kind: z.literal("youtube"),
+    videoId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, "videoId is [A-Za-z0-9_-]"),
+    title: z.string().max(200).optional(),
+    channel: z.string().max(120).optional(),
+    live: z.boolean().optional(),
+    playing: z.boolean().optional(),
+    /** Thumbnail URL (else the screen's `youtubeThumb`). */
+    thumb: z.string().min(1).optional(),
+  }),
+  z.object({
+    kind: z.literal("panel"),
+    /** Heading, top left. */
+    title: z.string().max(60).optional(),
+    /** A short line under the heading. */
+    subtitle: z.string().max(80).optional(),
+    /** A small status pill, top right (a dot in `accent` + text). */
+    status: z.string().max(24).optional(),
+    /** Up to 8 rows: a label, an optional 0..1 bar and an optional value text. */
+    rows: z.array(z.object({ label: z.string().max(40), value: z.number().min(0).max(1).optional(), text: z.string().max(24).optional() })).max(8).optional(),
+    /** A sparkline along the bottom (oldest first), 0..1 each. */
+    series: z.array(z.number().min(0).max(1)).max(120).optional(),
+    /** Bars, dot and sparkline colour (default a calm green). */
+    accent: Color.optional(),
+    /** Dark (default) or light background. */
+    theme: z.enum(["dark", "light"]).optional(),
+  }),
+  z.object({ kind: z.literal("off") }),
+]);
+export type ScreenContent = z.infer<typeof ScreenContent>;
+
+/**
+ * A screen surface (CONTRACT section 1 "Screens"): on a box the +Z face shows the content (the
+ * other faces are a dark bezel), on a plane its +Y face. `true` = a screen that is off.
+ */
+export const ScreenSpec = z.object({
+  content: ScreenContent.optional(),
+  /** Reflections on the glass, 0..1 (default 0.3). */
+  glare: z.number().min(0).max(1).optional(),
+  /** Emissive gain of the picture (default 1.2). */
+  brightness: z.number().min(0).max(4).optional(),
+  /** Thumbnail URL for youtube content without its own `thumb`; `{id}` is replaced by the videoId. */
+  youtubeThumb: z.string().min(1).optional(),
+  /** Reserved: an embedded player overlay in live mode. Not drawn by this engine version (the card is used). */
+  iframe: z.boolean().optional(),
+});
+export type ScreenSpec = z.infer<typeof ScreenSpec>;
+
 export const Material = z.object({
   color: Color.optional(),
   roughness: z.number().min(0).max(1).optional(),
@@ -22,6 +81,12 @@ export const Material = z.object({
   opacity: z.number().min(0).max(1).optional(),
   wireframe: z.boolean().optional(),
   glow: z.number().min(0).max(50).optional(), // emissive intensity; with no emissive colour, glows in its own colour
+  /**
+   * false: this surface never feeds bloom (the glow pass sees it as an unlit occluder). For a faint
+   * emissive on big surfaces, e.g. a room's walls holding a little lamp light at night: seen from
+   * inside, bloom would turn it into a haze over the whole picture.
+   */
+  bloom: z.boolean().optional(),
   /** The glowing surface lands on exactly its colour on screen (emissive, else color), saturated under tone mapping; `glow` then only feeds bloom. */
   glowExact: z.boolean().optional(),
   /** Clear glass: see-through (interiors keep their contrast), slight tint from `color`, sky reflections + fresnel rim; `roughness` frosts it; `opacity` is ignored. */
@@ -32,6 +97,8 @@ export const Material = z.object({
    * material's emissive, else its colour) at `intensity` (default 1.5): windows that glow at night.
    */
   night: z.object({ emissive: Color.optional(), intensity: z.number().min(0).max(50).optional() }).optional(),
+  /** A screen whose picture changes at runtime (the `screen` op): video, image, youtube card or off. Box or plane; not with glass / glowExact. */
+  screen: z.union([z.literal(true), ScreenSpec]).optional(),
 });
 
 /** Partial sweep in degrees around the shape's axis. Cylinder/cone/capsule: around Y, 0 = +Z, 90 = +X. Torus: in its XY plane, 0 = +X, 90 = +Y. */
@@ -211,6 +278,10 @@ export const Entity: z.ZodType<Entity> = z.lazy(() =>
       if (!e.from || !e.to) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [e.from ? "to" : "from"], message: 'a segment needs "from" and "to" points ([x,y,z]) and an optional "radius"' });
       else if (Math.hypot(e.to[0] - e.from[0], e.to[1] - e.from[1], e.to[2] - e.from[2]) < 1e-6) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["to"], message: "segment from and to are the same point" });
     }
+    if (e.kind === "primitive" && e.material?.screen) {
+      if (e.shape !== "box" && e.shape !== "plane") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["material", "screen"], message: `a screen is a box (content on its +Z face) or a plane (+Y face), not a ${e.shape}` });
+      if (e.material.glass || e.material.glowExact) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["material", "screen"], message: "a screen cannot also be glass or glowExact" });
+    }
     if (e.kind === "light" && e.night && e.day) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["day"], message: "a light is either night: true (on at night) or day: true (on by day), not both" });
     if (e.kind === "primitive" && e.shape !== "segment" && (e.from || e.to)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [e.from ? "from" : "to"], message: `from/to belong to shape "segment", not "${e.shape}"` });
   }),
@@ -325,6 +396,95 @@ export const Environment = z.object({
 export const CameraPose = z.object({ position: Vec3, target: Vec3, fov: z.number().min(5).max(120).optional() });
 export type CameraPose = z.infer<typeof CameraPose>;
 
+/**
+ * A walkable layer of a world (live viewer only: walk / fly / layer travel, presence). Floors are
+ * flat at `floorY`; people walk inside the disc `walk` (world x, z); `height` is the room's clear
+ * height above the floor (a ceiling), omitted for open sky. CONTRACT.md section 1c.
+ */
+export const Layer = z.object({
+  id: Id,
+  name: z.string().min(1).max(40),
+  floorY: z.number(),
+  walk: z.object({ center: z.tuple([z.number(), z.number()]), radius: z.number().positive().max(1000) }),
+  spawn: Vec3,
+  /** A world.cameras key to frame this layer from in orbit mode. */
+  camera: z.string().max(64).optional(),
+  height: z.number().positive().max(1000).optional(),
+});
+export type Layer = z.infer<typeof Layer>;
+
+export const Layers = z
+  .array(Layer)
+  .max(8)
+  .superRefine((list, ctx) => {
+    const seen = new Set<string>();
+    list.forEach((l, i) => {
+      if (seen.has(l.id)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [i, "id"], message: `duplicate layer id "${l.id}"` });
+      seen.add(l.id);
+      const d = Math.hypot(l.spawn[0] - l.walk.center[0], l.spawn[2] - l.walk.center[1]);
+      if (d > l.walk.radius + 1e-6) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [i, "spawn"], message: `spawn is ${d.toFixed(1)} m from the walk centre, outside its radius ${l.walk.radius}` });
+      if (l.spawn[1] < l.floorY - 1e-6) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [i, "spawn"], message: "spawn is below the floor" });
+    });
+  });
+
+/**
+ * Islands in one sky (CONTRACT.md section 1e, docs/islands.md): other worlds drawn next to this one,
+ * each at its own offset, loaded lazily by distance in the live viewer (an impostor until then) and
+ * all at load in render mode; an optional ferry (a cabin on a route) links this world to the island.
+ */
+export const IslandId = z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/, "island ids are lowercase [a-z0-9-], at most 32 characters (no dots)");
+export const Ferry = z
+  .object({
+    name: z.string().min(1).max(40).optional(),
+    /** The link's geometry in THIS world's frame (towers, cable, stations, the cabin); composed as "<island>.ferry.<id>". */
+    entities: z.array(Entity).max(64),
+    /** Id (top level of `entities`) of the cabin the viewer moves along `route`. */
+    cabin: z.string().min(1),
+    /** The cabin origin's path in this world's frame, home end first. */
+    route: z.array(Vec3).min(2).max(256),
+    /** Where a rider steps in (home side) and out (island side), this world's frame. */
+    board: Vec3,
+    alight: Vec3,
+    /** Rider's feet above the cabin origin (m, default 0). */
+    floor: z.number().min(-10).max(10).optional(),
+    /** Seconds per crossing, shuttling on its own (default 40; 6 s at each end) and ridden (default: by length). */
+    period: z.number().min(4).max(3600).optional(),
+  })
+  .superRefine((f, ctx) => {
+    if (!f.entities.some((e) => e.id === f.cabin)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["cabin"], message: `no entity "${f.cabin}" at the top level of ferry.entities` });
+  });
+export type Ferry = z.infer<typeof Ferry>;
+export const IslandRef = z.object({
+  id: IslandId,
+  name: z.string().min(1).max(40),
+  /** The island's own world/v1 JSON, relative to this world's URL. */
+  src: z.string().min(1),
+  /** The island's origin in this world's frame (translation only). */
+  offset: Vec3,
+  /** Footprint radius (m) around the offset, in x/z. */
+  radius: z.number().positive().max(2000),
+  /** Camera distance (m) to the island centre under which the live viewer loads it (default 260; unloads at 1.25x). */
+  load: z.number().positive().max(10000).optional(),
+  /** Its live feed (ws url or same-origin path), live viewer only. */
+  live: z.string().min(1).optional(),
+  /** Its presence room (ws url or path), live viewer only. */
+  presence: z.string().min(1).optional(),
+  /** Island-local stand-in drawn while the full island is not loaded (a few primitives). */
+  impostor: z.array(Entity).max(64).optional(),
+  ferry: Ferry.optional(),
+});
+export type IslandRef = z.infer<typeof IslandRef>;
+export const Islands = z
+  .array(IslandRef)
+  .max(8)
+  .superRefine((list, ctx) => {
+    const seen = new Set<string>();
+    list.forEach((r, i) => {
+      if (seen.has(r.id)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [i, "id"], message: `duplicate island id "${r.id}"` });
+      seen.add(r.id);
+    });
+  });
+
 export const WorldPack = z.object({
   tera: z.literal("world/v1"),
   id: Id,
@@ -337,5 +497,12 @@ export const WorldPack = z.object({
   cameras: z.record(z.string(), CameraPose).optional(),
   // live viewer UI only (a small key in the HUD), never drawn into frames
   legend: z.array(z.object({ label: z.string().min(1).max(40), color: Color })).max(8).optional(),
+  // live viewer only (walk / fly / layer travel, presence), never drawn into frames
+  layers: Layers.optional(),
+  // named residents (actors with style "resident" refer to them) and sandbox rooms: CONTRACT.md 1d
+  residents: ResidentsField.optional(),
+  sandboxes: SandboxesField.optional(),
+  // other worlds in the same sky (live viewer: lazy; render mode: all at load): CONTRACT.md 1e
+  islands: Islands.optional(),
 });
 export type WorldPack = z.infer<typeof WorldPack>;

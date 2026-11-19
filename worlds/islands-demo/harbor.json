@@ -1,0 +1,341 @@
+{
+ "tera": "world/v1",
+ "id": "harbor",
+ "title": "Harbor — the second island",
+ "entities": [
+  {
+   "id": "sun",
+   "kind": "light",
+   "light": "directional",
+   "intensity": 2.4,
+   "transform": {
+    "position": [
+     20,
+     30,
+     10
+    ]
+   },
+   "castShadow": true
+  },
+  {
+   "id": "fill",
+   "kind": "light",
+   "light": "hemisphere",
+   "color": "#fff6e8",
+   "intensity": 0.7
+  },
+  {
+   "id": "harbor-top",
+   "kind": "primitive",
+   "shape": "cylinder",
+   "size": [
+    9,
+    0.6
+   ],
+   "transform": {
+    "position": [
+     0,
+     -0.3,
+     0
+    ]
+   },
+   "material": {
+    "color": "#b2c09a",
+    "roughness": 0.95
+   },
+   "tags": [
+    "ground"
+   ]
+  },
+  {
+   "id": "harbor-rim",
+   "kind": "primitive",
+   "shape": "cylinder",
+   "size": [
+    9.05,
+    1.2,
+    8.6
+   ],
+   "transform": {
+    "position": [
+     0,
+     -1.2,
+     0
+    ]
+   },
+   "material": {
+    "color": "#e4dccd",
+    "roughness": 0.9
+   }
+  },
+  {
+   "id": "harbor-keel",
+   "kind": "primitive",
+   "shape": "cone",
+   "size": [
+    8.6,
+    8.1,
+    0.6
+   ],
+   "transform": {
+    "position": [
+     0,
+     -5.85,
+     0
+    ],
+    "rotation": [
+     180,
+     0,
+     0
+    ]
+   },
+   "material": {
+    "color": "#c8b392",
+    "roughness": 0.92
+   }
+  },
+  {
+   "id": "shop",
+   "kind": "group",
+   "tags": [
+    "plot",
+    "building"
+   ],
+   "transform": {
+    "position": [
+     2,
+     0,
+     1
+    ]
+   },
+   "children": [
+    {
+     "id": "shop-body",
+     "kind": "primitive",
+     "shape": "box",
+     "size": [
+      4.5,
+      3,
+      3.6
+     ],
+     "radius": 0.08,
+     "transform": {
+      "position": [
+       0,
+       1.5,
+       0
+      ]
+     },
+     "material": {
+      "color": "#f3ede2",
+      "roughness": 0.85
+     }
+    },
+    {
+     "id": "shop-awning",
+     "kind": "primitive",
+     "shape": "box",
+     "size": [
+      4.8,
+      0.12,
+      1.2
+     ],
+     "radius": 0.08,
+     "transform": {
+      "position": [
+       0,
+       2.4,
+       2.3
+      ],
+      "rotation": [
+       12,
+       0,
+       0
+      ]
+     },
+     "material": {
+      "color": "#d2bd8c",
+      "roughness": 0.85
+     }
+    },
+    {
+     "id": "shop-door",
+     "kind": "primitive",
+     "shape": "box",
+     "size": [
+      1,
+      2,
+      0.1
+     ],
+     "radius": 0.08,
+     "transform": {
+      "position": [
+       0,
+       1,
+       1.82
+      ]
+     },
+     "material": {
+      "color": "#cfae80",
+      "roughness": 0.85
+     }
+    }
+   ]
+  },
+  {
+   "id": "tree",
+   "kind": "group",
+   "transform": {
+    "position": [
+     -4,
+     0,
+     -3
+    ]
+   },
+   "children": [
+    {
+     "id": "tree-trunk",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.12,
+      1.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       0.6,
+       0
+      ]
+     },
+     "material": {
+      "color": "#b39874",
+      "roughness": 0.85
+     }
+    },
+    {
+     "id": "tree-crown",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.9
+     ],
+     "transform": {
+      "position": [
+       0,
+       1.7,
+       0
+      ]
+     },
+     "material": {
+      "color": "#a9bd96",
+      "roughness": 0.95
+     }
+    }
+   ]
+  }
+ ],
+ "paths": [
+  {
+   "id": "loop",
+   "closed": true,
+   "smooth": true,
+   "points": [
+    [
+     -5,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     -5
+    ],
+    [
+     5,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     5
+    ]
+   ]
+  }
+ ],
+ "graph": {
+  "nodes": [
+   {
+    "id": "plaza",
+    "position": [
+     -2,
+     0,
+     2
+    ]
+   },
+   {
+    "id": "shop.door",
+    "position": [
+     2,
+     0,
+     3.6
+    ]
+   }
+  ],
+  "edges": [
+   [
+    "plaza",
+    "shop.door"
+   ]
+  ]
+ },
+ "cameras": {
+  "default": {
+   "position": [
+    16,
+    10,
+    16
+   ],
+   "target": [
+    0,
+    1,
+    0
+   ],
+   "fov": 40
+  },
+  "overview": {
+   "position": [
+    16,
+    10,
+    16
+   ],
+   "target": [
+    0,
+    1,
+    0
+   ],
+   "fov": 40
+  }
+ },
+ "layers": [
+  {
+   "id": "surface",
+   "name": "Harbor",
+   "floorY": 0,
+   "walk": {
+    "center": [
+     0,
+     0
+    ],
+    "radius": 8.6
+   },
+   "spawn": [
+    -2,
+    0,
+    3
+   ],
+   "camera": "overview"
+  }
+ ]
+}

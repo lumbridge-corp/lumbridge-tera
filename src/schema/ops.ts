@@ -1,6 +1,6 @@
 // Ops — the one way to change a world. CONTRACT.md section 2.
 import { z } from "zod";
-import { Entity, Vec3 } from "./world.ts";
+import { Entity, ScreenContent, Vec3 } from "./world.ts";
 import { GraphOp, PathOp } from "./living.ts";
 
 export const Ease = z.enum(["linear", "inQuad", "outQuad", "inOutQuad", "inCubic", "outCubic", "inOutCubic", "inOutSine"]);
@@ -20,6 +20,8 @@ export const Op = z.discriminatedUnion("op", [
     duration: z.number().positive(),
     ease: Ease.optional(),
   }),
+  // what a screen shows (material.screen): stored in the entity, so replays and snapshots stay exact
+  z.object({ op: z.literal("screen"), id: z.string(), content: ScreenContent }),
   PathOp,
   GraphOp,
 ]);

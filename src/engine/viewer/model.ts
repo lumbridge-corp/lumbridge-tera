@@ -3,6 +3,8 @@
 // in Node.
 import type { CameraPose, Entity, WorldPack } from "../../schema/index.ts";
 import type { V3 } from "./flight.ts";
+import { lookOf } from "../resident-looks.ts";
+import { policyLines } from "../../residents/sandbox-room.ts";
 
 /** "machine-room" → "Machine room", "mr-rack-1" → "Mr rack 1". */
 export function pretty(id: string): string {
@@ -13,7 +15,7 @@ export function pretty(id: string): string {
 export interface Preset {
   id: string;
   name: string;
-  group: "view" | "place";
+  group: "view" | "island" | "place";
   /** A fixed pose (world.cameras); places are framed from their bounds at fly time. */
   pose?: CameraPose;
   /** Entity to frame (places). */
@@ -46,7 +48,10 @@ export function buildPresets(world: WorldPack): Preset[] {
   const out: Preset[] = [];
   const cams = world.cameras ?? {};
   const seen = new Set<string>();
+  const refs = world.islands ?? [];
   for (const [id, pose] of Object.entries(cams)) {
+    // an island's own cameras: its overview is in the Islands section
+    if (refs.some((r) => id.startsWith(r.id + "."))) continue;
     // Skip a camera identical to one already listed (worlds often alias default = overview).
     const key = JSON.stringify([pose.position, pose.target, pose.fov ?? 45]);
     if (seen.has(key)) {
@@ -57,6 +62,15 @@ export function buildPresets(world: WorldPack): Preset[] {
     }
     seen.add(key);
     out.push({ id, name: id === "default" ? "Home" : pretty(id), group: "view", pose });
+  }
+  // islands in the same sky: the home world (its default camera), then each island (its overview)
+  if (refs.length) {
+    const home = cams.default ?? cams.overview;
+    out.push({ id: "island:", name: splitTitle(world.title).name, group: "island", ...(home ? { pose: home } : {}) });
+    for (const r of refs) {
+      const ov = cams[`${r.id}.overview`] ?? cams[`${r.id}.default`];
+      out.push({ id: `island:${r.id}`, name: r.name, group: "island", entity: r.id, ...(ov ? { pose: ov } : {}) });
+    }
   }
   walkPaths(world.entities, (p) => {
     const e = p[p.length - 1]!;
@@ -96,6 +110,8 @@ export interface Card {
   /** 0..1 meters: the entity itself, or up to four meters inside a group. */
   meters: { label: string; value: number }[];
   chips: string[];
+  /** Label / value rows (an actor's `card.facts`): shown as a small table. */
+  facts?: { label: string; value: string }[];
 }
 
 const pct = (v: number) => Math.min(1, Math.max(0, v));
@@ -109,9 +125,18 @@ export function describe(world: WorldPack, id: string): Card | null {
   const nodeName = (n: string) => pretty(n);
   switch (e.kind) {
     case "actor": {
-      const a = e as unknown as { label?: string; state?: string; color?: string; move?: { to?: string; path?: string; from?: string } };
-      const detail = a.move?.to ? `heading to ${nodeName(a.move.to)}` : a.move?.path ? `on ${nodeName(a.move.path)}` : undefined;
-      return { id, title: a.label ?? pretty(id), kind: "Agent", state: a.state ?? "idle", detail, color: a.color, meters: [], chips: tags };
+      const a = e as unknown as { label?: string; state?: string; color?: string; style?: string; resident?: string; move?: { to?: string; path?: string; from?: string; stops?: { to: string }[] }; card?: { kind?: string; title?: string; detail?: string; facts?: { label: string; value: string }[] } };
+      if (a.style === "resident") {
+        const rc = residentCard(world, id, a, tags);
+        if (a.card?.detail) rc.detail = a.card.detail;
+        if (a.card?.facts?.length) rc.facts = a.card.facts.slice(0, 8);
+        return rc;
+      }
+      const stops = a.move?.stops?.length ? `${a.move.stops.map((s) => nodeName(s.to)).join(" → ")} → ${nodeName(a.move.to!)}` : undefined;
+      const detail = a.card?.detail ?? (stops ? `via ${stops}` : a.move?.to ? `heading to ${nodeName(a.move.to)}` : a.move?.path ? `on ${nodeName(a.move.path)}` : undefined);
+      const card: Card = { id, title: a.card?.title ?? a.label ?? pretty(id), kind: a.card?.kind ?? "Agent", state: a.state ?? "idle", detail, color: a.color, meters: [], chips: a.card ? [] : tags };
+      if (a.card?.facts?.length) card.facts = a.card.facts.slice(0, 8);
+      return card;
     }
     case "meter": {
       const m = e as unknown as { value: number };
@@ -124,6 +149,10 @@ export function describe(world: WorldPack, id: string): Card | null {
       return { id, title: pretty(id), kind: "Flow", state: f.style ?? "dots", detail: `along ${nodeName(f.path)}`, color: f.color, meters: [], chips: tags.filter((t) => t !== "live-flow") };
     }
     case "group": {
+      if (tags.includes("sandbox")) {
+        const card = sandboxCard(world, e);
+        if (card) return card;
+      }
       const kind = tags.includes("machine") ? "Machine" : tags.includes("hero") ? "Landmark" : tags.includes("plot") || tags.includes("building") ? "Building" : "Place";
       const meters: Card["meters"] = [];
       walkPaths(e.children ?? [], (p) => {
@@ -141,11 +170,49 @@ export function describe(world: WorldPack, id: string): Card | null {
   }
 }
 
+const cap = (s: string) => (s ? s[0]!.toUpperCase() + s.slice(1) : s);
+
+/** A resident's card: its name, role, home, what it does and where it works (world.residents). */
+function residentCard(world: WorldPack, id: string, a: { label?: string; state?: string; color?: string; resident?: string; move?: { to?: string } }, tags: string[]): Card {
+  const def = a.resident ? world.residents?.find((r) => r.id === a.resident) : undefined;
+  const look = lookOf(def ?? null, a.color);
+  const box = def?.sandbox ? world.sandboxes?.find((s) => s.id === def.sandbox) : undefined;
+  const state = a.state === "working" ? "working" : a.move?.to && def?.homeNode && a.move.to !== def.homeNode ? "out" : a.state === "walking" ? "walking" : "at home";
+  const chips = [def?.home ? `home · ${def.home}` : "", box ? `in ${box.name}` : "", ...tags.filter((t) => !["live", "agent", "resident"].includes(t) && t !== def?.role).slice(0, 2)].filter(Boolean);
+  return { id, title: def?.name ?? a.label ?? pretty(id), kind: cap(def?.role ?? "resident"), state, detail: def?.blurb, color: look.body, meters: [], chips };
+}
+
+/** A sandbox room's card: its name, what the boundary is, the policy on its door, who is inside. */
+function sandboxCard(world: WorldPack, e: Entity): Card | null {
+  const def = world.sandboxes?.find((s) => s.entity === e.id || s.id === e.id);
+  if (!def) return null;
+  let count: string | undefined;
+  walkPaths([e], (p) => {
+    const x = p[p.length - 1]! as Entity & { text?: string };
+    if (x.kind === "text" && x.tags?.includes("sandbox-count")) count = x.text;
+  });
+  const inside = (world.residents ?? []).filter((r) => r.sandbox === def.id).map((r) => r.name);
+  return {
+    id: e.id, title: def.name, kind: `Sandbox · ${def.kind}`, state: count, detail: def.blurb, meters: [],
+    chips: [...policyLines(def.policy).map((l) => l.replace(/\s{2,}/, " · ")), ...inside.map((n) => `resident · ${n}`)],
+  };
+}
+
 /** Visible actors in the world (the HUD's agent counter). */
 export function countAgents(world: WorldPack): number {
   let n = 0;
   walkPaths(world.entities, (p) => {
     if (p[p.length - 1]!.kind === "actor" && p.every((x) => x.visible !== false)) n++;
+  });
+  return n;
+}
+
+/** Visible actors carrying `tag` (the HUD's journeys toggle counts tag "journey"). */
+export function countTagged(world: WorldPack, tag: string): number {
+  let n = 0;
+  walkPaths(world.entities, (p) => {
+    const e = p[p.length - 1]!;
+    if (e.kind === "actor" && e.tags?.includes(tag) && p.every((x) => x.visible !== false)) n++;
   });
   return n;
 }

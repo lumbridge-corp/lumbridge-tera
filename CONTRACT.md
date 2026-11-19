@@ -24,6 +24,22 @@
 > (section 4), live-mode `?time=` / `?timeScale=`. Worlds without these fields render
 > pixel-identically (`npm run parity:render`). Details: `docs/sky.md`.
 
+> engine/players (2026-11-19) changes this file: world-level `layers` (section 1c: floors, walk
+> discs, spawns, ceilings), the live-mode page flag `?presence=<url>` (protocol "players/v1",
+> docs/players.md), Walk / Fly modes and layer travel in the live viewer. Render mode is unchanged.
+>
+> engine/screen (2026-11-19) changes this file: material `screen` (a box or plane whose picture
+> changes at runtime: video, image, youtube card or off) and the `screen` op (section 2). Worlds
+> without screens render pixel-identically (`npm run parity:render`). Details: `docs/screen.md`.
+>
+> engine/compute (2026-11-19) changes this file: screen content `panel` (a small dashboard the
+> engine draws: title, status, rows of bars and values, a sparkline). Additive; other worlds are
+> unchanged.
+
+> engine/adapters (2026-11-19) changes this file: section 10 (adapters: Node-side sources that turn
+> telemetry into `update` ops; the Prometheus bindings adapter, `docs/adapters-prometheus.md`) and the
+> `src/adapters/` row in section 8. Additive: no schema or engine change.
+
 This file is the agreement between the parts of Tera. Several people and agents build
 those parts at the same time; if your work needs a change here, change this file in
 the same PR and say so at the top of the PR. Everything else is yours to decide.
@@ -65,7 +81,8 @@ of truth; this is the summary.
                    "post": { "ao": true, "bloom": { "strength": 0.6 }, "dof": { "mode": "tiltshift", "center": 0.5, "band": 0.2 } } },
   "entities": [ Entity, ... ],
   "cameras": { "default": { "position": [8, 5, 10], "target": [0, 1, 0], "fov": 45 } },
-  "legend": [ { "label": "requests", "color": "#c4ec3e" }, { "label": "data", "color": "#9fe6e6" } ]
+  "legend": [ { "label": "requests", "color": "#c4ec3e" }, { "label": "data", "color": "#9fe6e6" } ],
+  "layers": [ { "id": "street", "name": "Street", "floorY": 0, "walk": { "center": [0, 0], "radius": 24 }, "spawn": [-4, 0, 2.4] } ]
 }
 ```
 
@@ -75,7 +92,10 @@ viewer's HUD, typically one entry per flow colour; it is never drawn into frames
 
 `Entity` — every entity has `id` (unique), `kind`, optional `transform`
 (`position`, `rotation` (Euler XYZ degrees), `scale` (number or [x,y,z])), optional
-`visible` (default true) and optional `tags: string[]`.
+`visible` (default true) and optional `tags: string[]`. The tag `dynamic` keeps a primitive or
+repeat out of the live viewer's static batches (docs/viewer.md, "Draw calls"); anything that
+changes after load leaves them by itself, so the tag is only needed for objects a page moves
+with its own code every frame without `engine.entityObject(id)`.
 
 | kind | extra fields |
 |---|---|
@@ -90,8 +110,10 @@ viewer's HUD, typically one entry per flow colour; it is never drawn into frames
 | `flow` | `path` (world path id); `rate` pulses/s, `speed` m/s, `color`, `size` m, `glow`, `style`: `dots` `dashes` `comet`; `pipe`: true \| `{ radius, color, opacity, collars }` (collars: `false` = none, or `{ every (m, default 2.4), max (rings per pipe, spread out on long runs), tube (thickness / pipe radius, default 0.13), color }`) |
 | `meter` | `value` 0..1; `style`: `bar` `ring`; `size` [length\|radius, thickness]; `color` (default green → amber → red), `track`, `vertical` |
 
-`material` (primitives only): `{ color, roughness?, metalness?, emissive?, opacity?, wireframe?, glow?, glowExact?, glass?, night? }`
-(`night`: the night look, section 1b).
+`material` (primitives only): `{ color, roughness?, metalness?, emissive?, opacity?, wireframe?, glow?, glowExact?, glass?, night?, bloom?, screen? }`
+(`night`: the night look, section 1b). `bloom: false` keeps a surface out of bloom (the glow pass sees an
+unlit occluder): for a faint emissive on big surfaces, e.g. walls holding a little lamp light at night,
+which bloom would otherwise spread into a haze over the whole picture seen from inside the room.
 `glow` is the emissive intensity; without `emissive` the primitive glows in its own colour.
 Tone mapping (ACES) desaturates bright emissive colours toward white; `glowExact: true` makes the
 glowing surface land on exactly its colour (`emissive`, else `color`) on both renderers, with or
@@ -102,6 +124,20 @@ veil), tinted by `color` (default a faint green-grey), sky reflections with a fr
 outline on sharp edges so panes read; `roughness` frosts it, `opacity` is ignored. Drawn in the
 transmissive pass (after opaque, before transparent: sorted correctly); transparent things behind
 a pane (veils, flow pipes, labels) show through untinted. Do not fake windows with low `opacity`.
+
+`screen` makes a `box` (picture on its +Z face, the other faces a dark bezel in `color`) or a
+`plane` (picture on its +Y face) a screen: `true` (off) or `{ content?, glare? 0..1 (0.3),
+brightness? (0.9), youtubeThumb? (URL, "{id}" = videoId), iframe? (reserved) }`. `content` is
+`{ kind: "video", src, title? }` (muted looping mp4; live: plays only while in view; render: seeked
+to script time mod duration, deterministic) | `{ kind: "image", src, title? }` | `{ kind: "youtube",
+videoId, title?, channel?, live?, playing?, thumb? }` (a card: thumbnail, title, channel, LIVE /
+play / pause badge; only the given thumbnail URL is fetched) | `{ kind: "panel", title?, subtitle?,
+status?, rows?: [{ label, value? 0..1, text? }] (≤ 8), series?: number[] (0..1, ≤ 120), accent?,
+theme?: "dark" | "light" }` (a small dashboard drawn by the engine: heading, status pill, bars,
+sparkline; no requests) | `{ kind: "off" }` (dark glass).
+Pictures are cover-fitted (cropped, never stretched), emissive (sRGB), not affected by `night`,
+with environment glare. Not with `glass` / `glowExact`. Change it with the `screen` op. See
+`docs/screen.md`.
 
 `repeat` copies a primitive, model, text, group or nested repeat into a grid: copy (i, j, k) sits at
 (i·dx, j·dy, k·dz) in the repeat's space, then gets the copied entity's own transform. Every
@@ -149,6 +185,23 @@ Time: in render mode every pose is a function of script time (frame-exact, seeka
 live mode the clock is seconds since the page opened, and a changed `move` (or a moved
 actor) continues from where the actor is drawn. A camera-script event that sends an actor
 somewhere should set `move.startT` to the event time.
+
+Journeys: `move.stops` = `[{ to, dwell, state? }]` (≤ 16) turns a `to` walk into an errand: from
+`from` (or where the actor is) through every stop's graph node, standing `dwell` seconds at each
+doing `state` (`working` by default, or `idle`), then on to `move.to`, where it stays. Needs `to`,
+no `loop`. The legs are one route, so the pose is still a function of time (render mode: set
+`startT`); a lane applies between stops and eases to the centre line at each stop. Actors standing
+at the same stop node at overlapping times queue: in order of arrival, the first stands on the
+node, the next ones on a ring ~0.75 m out (eight places, then a wider ring) on the side they came
+from, turning to face the node; they step to their place and back over 0.5 s. Stopped journey
+actors count as standing for the crowd step. Optional actor fields: `trail` `{ color?, seconds?
+(2.4), width? (0.14 m), opacity? (0.8) }` — a ribbon on the ground over the stretch walked in the
+last `seconds` (journeys and one-shot `to` walks), fading to nothing at the tail and shrinking away
+while the actor stands; `card` `{ kind?, title?, detail?, facts?: [{ label, value }] (≤ 8) }` —
+what the live viewer's selection card shows for it (display only). Convention: tag journey actors
+`journey` (the viewer's Journeys toggle hides / shows exactly those). A live feed sends a journey
+as `add` (actor at its start, no `move`) then, in a later message, an `update` with the `move`, so
+the walk starts when it arrives; `remove` when it is home.
 
 A flow's pulse *i* is emitted at *i*/rate and sits at s = (t − i/rate)·speed along its path;
 the flow is already full at t = 0. Flows/actors/meters are additive and untonemapped where
@@ -267,6 +320,73 @@ Shape options (primitive fields):
   authored fill lights `day: true` so they do not grey out the night.
 - XR: stars to magnitude 5 and ≤ 1 500 satellites; AR draws no sky.
 
+### 1c. Layers (live viewer only)
+
+`layers` (optional, ≤ 8, unique ids): the floors people walk on in the live viewer — Walk and
+Fly modes, layer travel, presence (docs/players.md). Never drawn into frames.
+
+```jsonc
+"layers": [
+  { "id": "street", "name": "Street", "floorY": 0,                        // flat floor (m)
+    "walk": { "center": [0, 0], "radius": 24 },                           // walk disc in world x, z
+    "spawn": [-4, 0, 2.4],                                                // inside the disc, not under the floor
+    "camera"?: "street",                                                  // a world.cameras key framing it
+    "height"?: 5.5 }                                                      // room height above the floor (a ceiling); omit = open sky
+]
+```
+
+Walkers stay on `floorY` inside the disc and are stopped by solid geometry (glass counts);
+flyers never go below the floor or above the ceiling of the layer they are in. Travel between
+layers rides an entity with id `spine-car` along Y when the world has one (a lift), else it
+is a smooth flight to the target layer's spawn. A world without `layers` walks on one
+implicit ground layer.
+
+### 1d. Residents and sandbox rooms (`src/schema/residents.ts`, docs/residents.md)
+
+Named agents that live in a world, and glass rooms where contained agents work. Display data
+only on the world pack (no matching rules, nothing about where signals come from):
+
+```jsonc
+"residents": [                                   // ≤ 64, unique ids [a-z0-9-_]
+  { "id": "keeper", "name": "Keeper", "role": "steward",          // roles with a built-in look: steward, maintenance,
+                                                                  // simulator, analyst, builder, messenger, librarian,
+                                                                  // operator, voice, sandboxed (any other word: neutral)
+    "home"?: "The hall", "homeNode"?: "<graph node>",             // where it rests when it has nothing to do
+    "look"?: { "body"?: "#hex", "accent"?: "#hex", "badge"?: "key|broom|dice|chart|hammer|letter|book|dial|wave|lock|star|bolt|eye|leaf", "scale"?: 1.3 },
+    "sandbox"?: "<sandbox id>" | null, "blurb"?: "one line for its card" } ],
+"sandboxes": [                                   // ≤ 32
+  { "id": "lab", "name": "Glass lab", "kind": "container|ci-runner|worktree|vm|openshell|…",
+    "policy": { "network": "none|loopback|allowlist|tailnet|open|unknown", "files": "none|read-only|workdir|scratch|home|full|unknown",
+                "tools": ["shell", "git"] /* ["*"] = all, [] = none */, "enforcer"?: "docker|bwrap|openshell|none" },
+    "entity"?: "<the room's group id>", "blurb"?: "…" } ]
+```
+
+An actor with `"style": "resident", "resident": "<id>"` is drawn as that resident: a figure
+distinct from worker robots and from player avatars (role colour, cream face, chest badge, a
+halo ring in its accent, a role prop), with a light name plate (name + role; the actor's
+`label` replaces the name, `""` hides the plate) and a role card on click. Its pose is a pure
+function of time like a worker's: walking, working (role gesture + a small holo panel, the halo
+spins), idle = **at home** (the role's idle gesture: the steward looks out with its lantern up,
+the maintenance crew sweeps, the librarian reads, the simulator turns a die over its hand …).
+Feeds send it to `homeNode` when it has nothing to do. An unknown `resident` id is a reference
+error in validation; at runtime the actor gets the neutral look with its `label` and `color`.
+
+A sandbox room is plain world JSON: `sandboxRoom()` (`src/residents/sandbox-room.ts`) builds the
+group (glass walls in a pale-wood frame, a frosted roof, a closed glass door left of centre with
+the policy plaque on it) and returns walking-graph spots (door outside / inside, a work spot,
+slots). Live ids inside it: `<id>-contain` (the sill round the glass's foot: set its material to
+`CONTAIN_ON` when something inside tried to reach out, `CONTAIN_OFF` when calm), `<id>-lamp`
+(status lamp over the door), `<id>-count` (the plaque's last line, `update` with `text`).
+Clicking a room shows its card: name, kind, policy, who lives inside.
+
+**Registries** (`"tera": "residents/v1"`, `ResidentRegistry`) are the private source a world's
+display data comes from: each resident also has `match` (globs a live feed uses to recognise it:
+`units` "host:unit", `procs`, `agents` "source:key", `langfuse` {project, trace}, `prometheus`),
+`visibility` (`owner` < `member` < `guest` < `public`) and an optional `publicName` /
+`publicBlurb`. `checkRegistry()` checks references and names; `worldResidents(registry, audience)`
+gives the display data an audience may see (below its level: renamed to `publicName`, else
+dropped). Registries never ship in a world.
+
 ## 2. Ops — the one way to change a world
 
 Agents, camera-script events and the UI all change a world with the same ops
@@ -282,6 +402,7 @@ says which index failed).
 { "op": "env",     "set": { /* partial environment */ } }
 { "op": "animate", "id": "chair", "to": { "position"?, "rotation"?, "scale"? },
                    "duration": 1.5, "ease": "inOutCubic" }   // only meaningful inside a script timeline
+{ "op": "screen",  "id": "tv", "content": ScreenContent }       // what a screen shows (section 1); stored in material.screen.content
 { "op": "path",    "set"?: PathDef, "remove"?: "path-id" }          // add/replace a world path by id, or remove one
 { "op": "graph",   "nodes"?: GraphNode[], "edges"?: GraphEdge[], "removeNodes"?: ["id"] }
                    // nodes add/move by id, edges are added (duplicates ignored), removed nodes drop their edges
@@ -357,6 +478,10 @@ Live mode only: `?ui=0` hides the viewer UI (loading screen, HUD, cards: for kio
 (default 60), see `docs/viewer.md`. Live name tags (actor `label`) are fitted to the screen (never
 taller than 22 px, faded when tiny or at the camera); render mode keeps world-size tags unless
 `?labels=fit` (still deterministic: a function of the camera pose only).
+Live mode only: `?batch=0` turns off static batching and pooled flows (on by default in live mode,
+never in render mode; `?batch=1` forces them in render mode for `scripts/batch-parity.ts`).
+Live mode only: `?presence=<ws url or path>` joins a presence server (protocol "players/v1",
+docs/players.md): other people's avatars and name tags; nothing is sent without the flag.
 Live mode only: `?xr=vr|ar` adds an Enter VR / Start AR button (WebXR, WebGL2 renderer;
 `&xrsize=<m>` tabletop size, `&xrwalk=<k>` walk scale, `&xrstart=table|walk`), see
 `docs/xr.md`.
@@ -453,6 +578,7 @@ default and must be marked `"license": "research-only"` in `/v1/health`.
 | `src/mcp/` | MCP server |
 | `workers/` | gen workers |
 | `src/bridge/` | implemented by the engine, used by the render host and the MCP server |
+| `src/adapters/` | Node-side telemetry adapters (section 10); no three.js, no DOM |
 
 Rules: TypeScript strict, ESM, Node ≥ 22. Dependencies need a licence compatible with
 Apache-2.0 (no GPL/AGPL/non-commercial). No telemetry and no calls home. No secrets in
@@ -513,3 +639,21 @@ The file is JSONL (`src/schema/living.ts` `ReplayLine` / `ReplayHeader`, parsed 
 - HUD: the dot turns grey with the word "replay" (none with `?ui=0`).
 - Example: `/?world=/world/world.json&replay=/world/replay.jsonl&replaySpeed=2`
   (`worlds/living/replay.jsonl` is a 4 s sample).
+
+## 10. Adapters — telemetry → ops (`src/adapters/`)
+
+An adapter reads someone's telemetry and emits section 2 `update` ops for entities a
+configuration names. Node only, no three.js, no DOM, read-only towards its source. Shape
+(`src/adapters/types.ts` `WorldAdapter`): `setEntities(ids | null)` (entities the world has;
+others are skipped), `tick(now?) → UpdateOp[][]` (one list per item, each sent as its own
+`ops` message), `welcome() → UpdateOp[][]` (the current state for a new page),
+`status() → [{ id, kind, state: pending|live|stale|error|missing, ageS, entities, error? }]`
+(errors scrubbed: no URLs, queries, label values or credentials).
+
+- **Prometheus** (`src/adapters/prometheus/`, `docs/adapters-prometheus.md`): bindings
+  `{ id, query, every, kind: glow|meter|flow|pulse|label|value, entity | labelMap, range, scale,
+  when, on/off, glow, rate, pulse, label, stale, onStale, step, batch, maxSeries }`, validated
+  by `validateBindings` (unknown keys are errors; one driver per entity; material keys limited
+  to color/emissive/glow/opacity/roughness/metalness/night). Ops carry only numbers computed
+  from the answers and ids from the bindings; Prometheus label values never reach the world.
+  Same-cadence bindings share one request (`label_replace(…, "tera_binding", id, "", "") or …`).

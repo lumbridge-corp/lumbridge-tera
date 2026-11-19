@@ -134,7 +134,7 @@ export function checkOps(rawOps: unknown, world: WorldPack | null): OpCheck {
   const errors: OpCheck["errors"] = [];
   const ops: Op[] = [];
   // Living world: paths + graph as they will be after the ops so far (for reference checks).
-  const lw: Pick<WorldPack, "paths" | "graph"> = structuredClone({ paths: world?.paths, graph: world?.graph });
+  const lw: Pick<WorldPack, "paths" | "graph" | "residents"> = structuredClone({ paths: world?.paths, graph: world?.graph, residents: world?.residents });
   const refs = (e: Entity, msgs: string[], index: number) => {
     for (const m of livingRefErrors(e as unknown as { id: string; kind: string }, lw)) msgs.push(`ops[${index}]: ${m}`);
     if (e.kind === "group") e.children.forEach((c) => refs(c, msgs, index));
@@ -178,6 +178,13 @@ export function checkOps(rawOps: unknown, world: WorldPack | null): OpCheck {
           ops.push({ ...op, set: full });
           return void (msgs.length && errors.push({ index, messages: msgs }));
         }
+        break;
+      }
+      case "screen": {
+        const cur = ids.get(op.id);
+        if (!cur) msgs.push(`ops[${index}].id: no entity "${op.id}". Known ids: ${known()}`);
+        else if (cur.kind !== "primitive" || !cur.material?.screen) msgs.push(`ops[${index}].id: "${op.id}" is not a screen (a box or plane with material.screen)`);
+        else ids.set(op.id, { ...cur, material: { ...cur.material, screen: { ...(cur.material.screen === true ? {} : cur.material.screen), content: op.content } } });
         break;
       }
       case "remove":

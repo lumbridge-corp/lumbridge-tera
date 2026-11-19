@@ -8,11 +8,14 @@
 //   ?live=ws://host:port         live feed (live.ts, CONTRACT.md section 9): snapshots + ops as they happen
 //   ?replay=<url.jsonl>          a recorded live stream in a loop, no server (CONTRACT.md 9a)
 //     &replaySpeed=<x> &replayLoop=cut
+//   ?presence=<ws url or path>   live mode: other people in the world (protocol players/v1, docs/players.md)
 //   ?ui=0                        live mode: no viewer UI at all (kiosks, embeds)
 //   ?quality=auto|high|medium|low|lower|lowest   live mode: adaptive (default) or a pinned level
 //   ?idle=<s>                    live mode: seconds without input before the idle orbit (default 60)
 //   ?labels=fit                  render mode: fit actor name tags to the screen like live mode does
 //   ?time=<ISO|now> &timeScale=<x>   live mode: real-sky time override and speed (docs/sky.md)
+//   ?batch=0|1                   static batching + pooled flows (batch.ts): on in live mode, off in render
+//                                mode by default; 0/1 force it (comparisons: scripts/batch-parity.ts)
 import type { TeraBridge } from "../bridge/types.ts";
 import { Engine, type RendererPref } from "./engine.ts";
 import type { XrOptions } from "./xr.ts";
@@ -32,6 +35,7 @@ const xr: XrOptions | undefined =
 const timeScale = Number(params.get("timeScale"));
 const engine = new Engine(document.body, renderMode, pref, {
   xr,
+  batch: params.get("batch") === "0" ? false : params.get("batch") === "1" ? true : undefined,
   labelFit: renderMode ? params.get("labels") === "fit" : true,
   skyTime: renderMode ? undefined : params.get("time") ?? undefined,
   skyTimeScale: !renderMode && params.get("timeScale") !== null && Number.isFinite(timeScale) ? Math.max(-100000, Math.min(100000, timeScale)) : undefined,

@@ -3050,5 +3050,44 @@
    ],
    "fov": 55
   }
- }
+ },
+ "layers": [
+  {
+   "id": "street",
+   "name": "Street",
+   "floorY": 0,
+   "walk": {
+    "center": [
+     0,
+     0
+    ],
+    "radius": 24
+   },
+   "spawn": [
+    -4,
+    0,
+    2.4
+   ],
+   "camera": "street"
+  },
+  {
+   "id": "underworks",
+   "name": "Underworks",
+   "floorY": -6,
+   "walk": {
+    "center": [
+     1,
+     0
+    ],
+    "radius": 22
+   },
+   "spawn": [
+    -6,
+    -6,
+    0.6
+   ],
+   "camera": "tunnel",
+   "height": 5.5
+  }
+ ]
 }

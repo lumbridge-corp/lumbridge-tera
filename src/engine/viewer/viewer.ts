@@ -18,7 +18,12 @@ import type { XrOptions } from "../xr.ts";
 import type { LiveStatus, ReplayPlayer } from "../live.ts";
 import { Flight, fitAspect, framePose, outwardDir, type Pose, type V3 } from "./flight.ts";
 import { LEVELS, QualityGovernor, initialLevel, levelIndex, pixelRatioAt } from "./quality.ts";
-import { buildPresets, countAgents, describe, legendOf, parseSavedView, resolveSelection, splitTitle, type Card, type Preset } from "./model.ts";
+import { buildPresets, countAgents, countTagged, describe, entityPath, pretty, legendOf, parseSavedView, resolveSelection, splitTitle, type Card, type Preset } from "./model.ts";
+import { Play, worldLayers } from "./play.ts";
+import { Islands } from "./islands.ts";
+import { islandAt } from "../islands.ts";
+import { followCandidates, followLayer, poseFits } from "./follow.ts";
+import type { Layer } from "../../schema/index.ts";
 
 export interface ViewerInit {
   engine: Engine;
@@ -34,6 +39,7 @@ const ICON: Record<string, string> = {
   expand: '<path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/>',
   shrink: '<path d="M9 4v5H4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M15 20v-5h5"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  journeys: '<circle cx="5.5" cy="18" r="2"/><circle cx="18.5" cy="6" r="2"/><path d="M7.5 18h7a3.5 3.5 0 0 0 0-7h-5a3.5 3.5 0 0 1 0-7h7"/>',
   target: '<circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
   moon: '<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z"/>',
@@ -138,6 +144,8 @@ export class Viewer {
   private selected: string | null = null;
   private lastInput = performance.now();
   private idleOn: boolean;
+  /** Journey robots (actors tagged "journey") drawn? The HUD toggle; ?journeys=0|1 or the saved choice. */
+  private journeysOn: boolean;
   private idleAfter: number;
   private orbiting = false;
   private governor: QualityGovernor | null = null;
@@ -145,8 +153,22 @@ export class Viewer {
   private liveStatus: LiveStatus | null = null;
   private stopLive: (() => void) | null = null;
   private lastTap: { t: number; x: number; y: number } | null = null;
-  /** Camera follows a robot (after flying to it) until another view is chosen. */
-  private follow: { id: string; last: V3 } | null = null;
+  /**
+   * Camera follows a robot (after flying to it) until another view is chosen. `layer`: the layer
+   * the robot was on last frame (null = between layers, undefined = the world has none);
+   * `checkAt`: when to look again whether the view is still clear (follow.ts); `cutting`: a
+   * dip-cut to the robot's new floor is running.
+   */
+  private follow: { id: string; last: V3; layer?: string | null; checkAt: number; cutting?: boolean } | null = null;
+  /** The player: Orbit / Walk / Fly, layer travel, other people (play.ts). */
+  private play: Play | null = null;
+  /** Islands in the same sky (islands.ts), once a world with islands is in. */
+  private islands: Islands | null = null;
+  private worldBase = location.href;
+  /** The home world's title (the HUD shows the island you are on / look at: hudIsland). */
+  private homeTitle = "";
+  /** The island the HUD speaks for (null = the home world), as last drawn. */
+  private hudAt: string | null | undefined = undefined;
 
   // DOM (only with ui)
   private root!: HTMLElement;
@@ -164,6 +186,9 @@ export class Viewer {
     const idleParam = Number(init.params.get("idle"));
     this.idleAfter = Number.isFinite(idleParam) && idleParam > 0 ? idleParam : 60;
     this.idleOn = !this.reduced && store.get("tera:idle") !== "0";
+    const jp = init.params.get("journeys");
+    this.journeysOn = jp === "0" ? false : jp === "1" ? true : store.get("tera:journeys") !== "0";
+    if (!this.journeysOn) this.engine.living.actors.hiddenTags.add("journey");
     if (init.xr) document.documentElement.classList.add("tera-xr");
   }
 
@@ -319,6 +344,7 @@ export class Viewer {
       this.setTitle(w.title);
       this.status("Loading", 0.32);
     }
+    this.homeTitle = w.title;
     const s0 = { ...e.loadStats };
     const poll = first
       ? setInterval(() => {
@@ -340,14 +366,39 @@ export class Viewer {
     if (keep && !this.flight) await this.bridge.setCamera(keep);
     for (const m of res.warnings) console.warn(`[tera] ${m}`);
     this.worldId = w.id;
-    this.presets = buildPresets(w);
-    const box = e.contentBox();
+    this.worldBase = baseUrl;
+    if (w.islands?.length || this.islands) {
+      this.islands ??= new Islands({
+        engine: e,
+        base: () => this.worldBase,
+        // your avatar loads islands near it only while you are there (walking, flying, riding); in
+        // orbit the camera decides (it stands at its spawn on the home island)
+        avatar: () => (this.play ? { position: this.play.position, island: this.play.island, active: this.play.mode !== "orbit" || this.play.travelling } : null),
+        focus: () => { const t = this.engine.controls?.target; return t && (!this.play || this.play.mode === "orbit") ? [t.x, t.y, t.z] : null; },
+        changed: () => this.islandsChanged(),
+        toast: (m) => this.toast(m),
+      });
+      this.islands.reduced = this.reduced;
+      this.islands.setWorld(w);
+    }
+    this.presets = buildPresets(e.shown() ?? w);
+    const box = e.contentBox({ homeOnly: true });
     if (box) {
       const c = box.getCenter(e.camera.position.clone());
       this.islandCenter = [c.x, c.y, c.z];
     }
     this.renderPresets();
     this.renderLegend(w);
+    this.hudAt = undefined; // the HUD (title, legend, counts) looks again at the island it speaks for
+    if (!this.play) {
+      this.play = new Play({
+        engine: e, root: this.ui ? this.root : null, toast: (m) => this.toast(m), reduced: this.reduced,
+        presence: this.params.get("presence"),
+        islands: this.islands ?? undefined,
+        onMode: (m) => { if (m !== "orbit") { this.flight = null; this.follow = null; this.stopOrbit(); } },
+      });
+    }
+    this.play.setWorld(this.engine.shown() ?? w);
     this.updateCounts();
     if (first) {
       this.restoreView();
@@ -367,19 +418,63 @@ export class Viewer {
 
   private frame(dt: number) {
     const e = this.engine;
+    const playing = !!this.play && this.play.mode !== "orbit";
+    if (playing) { this.flight = null; this.follow = null; }
     if (this.follow) {
       const b = e.focusBox(this.follow.id);
       if (!b) this.follow = null;
       else {
         const c = b.getCenter(e.camera.up.clone());
+        const at: V3 = [c.x, c.y, c.z];
         const d: V3 = [c.x - this.follow.last[0], c.y - this.follow.last[1], c.z - this.follow.last[2]];
-        this.follow.last = [c.x, c.y, c.z];
-        const shift = (v: V3): V3 => [v[0] + d[0], v[1] + d[1], v[2] + d[2]];
-        if (this.flight) this.flight.to = { ...this.flight.to, position: shift(this.flight.to.position), target: shift(this.flight.to.target) };
-        else if (e.controls && (d[0] || d[1] || d[2])) {
-          e.camera.position.set(...shift(e.camera.position.toArray() as V3));
-          e.controls.target.set(...shift(e.controls.target.toArray() as V3));
-          e.camera.lookAt(e.controls.target);
+        this.follow.last = at;
+        const layers = this.layersForFollow();
+        const layer = layers.length ? followLayer(layers, [c.x, b.min.y, c.z]) : null;
+        const prev = this.follow.layer;
+        this.follow.layer = layers.length ? (layer?.id ?? null) : undefined;
+        // between layers (a lift shaft through the rock, a tunnel): the camera waits where it is;
+        // on a layer it follows across the floor (not down into a lift: that is the layers' job)
+        if (layers.length && layer) d[1] = 0;
+        if (this.follow.cutting) { /* a dip-cut to the robot's new layer is under way */ }
+        else if (layers.length && layer && prev !== undefined && prev !== layer.id) {
+          // out of a shaft onto another floor: a short fade and a cut to a clear pose there (a
+          // flight from the old floor would pass through the rock between them)
+          const f = this.follow;
+          f.cutting = true;
+          void this.dip(true).then(() => {
+            const nb = this.follow === f ? e.focusBox(f.id) : null;
+            if (nb) {
+              const c2 = nb.getCenter(e.camera.up.clone());
+              const l2 = followLayer(this.layersForFollow(), [c2.x, nb.min.y, c2.z]);
+              const pose = this.clearFollowPose({ min: nb.min.toArray() as V3, max: nb.max.toArray() as V3 }, l2, this.currentPose());
+              if (pose) { this.flight = null; e.setPose(pose); }
+              f.last = [c2.x, c2.y, c2.z];
+            }
+            f.cutting = false;
+            f.checkAt = performance.now() + 1500;
+            void this.dip(false);
+          });
+        } else if (!layers.length || layer) {
+          const shift = (v: V3): V3 => [v[0] + d[0], v[1] + d[1], v[2] + d[2]];
+          if (this.flight) this.flight.to = { ...this.flight.to, position: shift(this.flight.to.position), target: shift(this.flight.to.target) };
+          else if (e.controls && (d[0] || d[1] || d[2])) {
+            e.camera.position.set(...shift(e.camera.position.toArray() as V3));
+            e.controls.target.set(...shift(e.controls.target.toArray() as V3));
+            e.camera.lookAt(e.controls.target);
+          }
+          // now and then: the view still clear (and inside the room)? Else a clear pose there.
+          const now = performance.now();
+          if (!this.flight && now >= this.follow.checkAt) {
+            this.follow.checkAt = now + 400;
+            const cur = this.currentPose();
+            const far = !!layer && Math.abs(cur.position[1] - layer.floorY) > (layer.height ?? 6) + 4;
+            if (far) this.follow.layer = null; // the camera is on another floor: cut there next frame
+            else if (!poseFits(layer, cur.position) || this.blockedView(cur.target, cur.position)) {
+              const pose = this.clearFollowPose({ min: b.min.toArray() as V3, max: b.max.toArray() as V3 }, layer, cur);
+              if (pose) this.flight = new Flight(cur, pose, now / 1000, this.reduced);
+              else this.follow.checkAt = now + 2000; // nothing clear (inside something): ask again later
+            }
+          }
         }
       }
     }
@@ -393,12 +488,37 @@ export class Viewer {
       if (n !== null) this.applyLevel(n);
     }
     // Idle orbit: OrbitControls.autoRotate (only while nothing else moves the camera).
-    const idle = this.idleOn && !this.flight && this.firstLoaded && performance.now() - this.lastInput > this.idleAfter * 1000;
+    const idle = this.idleOn && !playing && !this.flight && this.firstLoaded && performance.now() - this.lastInput > this.idleAfter * 1000;
     if (idle !== this.orbiting && e.controls) {
       this.orbiting = idle;
       e.controls.autoRotate = idle;
       e.controls.autoRotateSpeed = 0.3; // ≈ 200 s per turn
     }
+    this.islands?.frame(dt);
+    this.play?.frame(dt);
+    if (this.islands && this.hudIsland() !== this.hudAt) this.updateCounts();
+  }
+
+  /**
+   * The island the HUD speaks for: the one you are on while you walk, fly or ride (until you step
+   * off), else the one the orbit camera looks at. null = the home world.
+   */
+  private hudIsland(): string | null {
+    const refs = this.islands?.refs() ?? [];
+    if (!refs.length) return null;
+    if (this.play && (this.play.mode !== "orbit" || this.play.travelling)) return this.play.island;
+    const t = this.engine.controls?.target;
+    return t ? islandAt([t.x, t.y, t.z], refs, 6) : null;
+  }
+
+  /** An island was mounted or unmounted: the layers panel and the views follow. */
+  private islandsChanged() {
+    const w = this.engine.shown();
+    if (!w) return;
+    this.play?.setWorld(w);
+    this.presets = buildPresets(w);
+    this.renderPresets();
+    this.updateCounts();
   }
 
   // ------------------------------------------------------------------ quality
@@ -413,7 +533,7 @@ export class Viewer {
   private applyLevel(i: number) {
     this.level = i;
     const L = LEVELS[i]!;
-    void this.engine.setQuality({ pixelRatio: pixelRatioAt(i, devicePixelRatio), post: L.post, shadowCap: L.shadow });
+    void this.engine.setQuality({ pixelRatio: pixelRatioAt(i, devicePixelRatio), post: L.post, shadowCap: L.shadow, shadows: L.shadows !== false });
     document.documentElement.dataset.teraQuality = L.name;
   }
 
@@ -425,14 +545,25 @@ export class Viewer {
   }
 
   flyTo(pose: Pose, follow: string | null = null) {
+    this.play?.setMode("orbit", true);
     const b = follow ? this.engine.focusBox(follow) : null;
-    this.follow = follow && b ? { id: follow, last: b.getCenter(this.engine.camera.up.clone()).toArray() as V3 } : null;
+    this.follow = follow && b ? { id: follow, last: b.getCenter(this.engine.camera.up.clone()).toArray() as V3, checkAt: performance.now() + 2500 } : null;
     this.flight = new Flight(this.currentPose(), pose, performance.now() / 1000, this.reduced);
     this.stopOrbit();
   }
 
   private presetPose(p: Preset): Pose | null {
     if (p.pose) return fitAspect({ position: p.pose.position, target: p.pose.target, fov: p.pose.fov ?? 45 }, this.engine.camera.aspect);
+    if (p.group === "island" && p.entity) {
+      // an island not loaded yet: frame its footprint from the bearing of the home view
+      const ref = this.engine.shown()?.islands?.find((r) => r.id === p.entity);
+      if (ref) {
+        const cam = this.engine.shown()?.cameras?.default;
+        const d: V3 = cam ? [cam.position[0] - cam.target[0], cam.position[1] - cam.target[1], cam.position[2] - cam.target[2]] : [1, 0.6, 1];
+        const o = ref.offset, r = ref.radius;
+        return framePose({ min: [o[0] - r, o[1] - r * 0.9, o[2] - r], max: [o[0] + r, o[1] + r * 0.45, o[2] + r] }, d, 40, this.engine.camera.aspect, 6);
+      }
+    }
     const box = p.entity ? this.engine.focusBox(p.entity) : null;
     if (!box) return null;
     const c = box.getCenter(this.engine.camera.position.clone());
@@ -471,12 +602,39 @@ export class Viewer {
     store.set(`tera:view:${this.worldId}`, JSON.stringify({ preset: this.activePreset ?? undefined, pose: this.currentPose() }));
   }
 
+  /** The world's layers for the follow camera (none when the world declares none). */
+  private layersForFollow(): Layer[] {
+    const w = this.engine.shown();
+    if (!w?.layers?.length) return [];
+    if (this.followLayersOf !== w) { this.followLayersOf = w; this.followLayersList = worldLayers(w, null); }
+    return this.followLayersList;
+  }
+  private followLayersOf: WorldPack | null = null;
+  private followLayersList: Layer[] = [];
+
+  /** Is something solid between a followed robot and the camera? Both ways (a ray that starts inside a closed mesh misses its faces), from just outside the robot. */
+  private blockedView(target: V3, pos: V3): boolean {
+    const v: V3 = [pos[0] - target[0], pos[1] - target[1], pos[2] - target[2]];
+    const n = Math.hypot(v[0], v[1], v[2]) || 1;
+    const from: V3 = [target[0] + (v[0] / n) * 0.7, target[1] + (v[1] / n) * 0.7, target[2] + (v[2] / n) * 0.7];
+    return this.engine.obstructed(from, pos) || this.engine.obstructed(pos, from);
+  }
+
+  /** A clear pose for a followed robot on `layer` (follow.ts candidates, the first with a clear view), else null. */
+  private clearFollowPose(box: { min: V3; max: V3 }, layer: Layer | null, cur: Pose): Pose | null {
+    const bearing: V3 = [cur.position[0] - cur.target[0], cur.position[1] - cur.target[1], cur.position[2] - cur.target[2]];
+    const list = followCandidates(box, bearing, cur.fov, this.engine.camera.aspect, layer).slice(0, 30);
+    return list.find((p) => !this.blockedView(p.target, p.position)) ?? null;
+  }
+
   /** Fly to an entity (double-click / double-tap / the card's button). */
   flyToEntity(id: string) {
     const box = this.engine.focusBox(id);
     if (!box) return;
     const cur = this.currentPose();
-    const isActor = this.engine.shown() && describe(this.engine.shown()!, id)?.kind === "Agent";
+    // any actor (worker robots, residents, journey walkers: their cards say "Journey" or a role)
+    const shown = this.engine.shown();
+    const isActor = !!shown && entityPath(shown.entities, id)?.at(-1)?.kind === "actor";
     let dir: V3 = [cur.position[0] - cur.target[0], cur.position[1] - cur.target[1], cur.position[2] - cur.target[2]];
     // Keep the current bearing at a calm elevation: robots from ~50° (over walls and
     // trees, they walk between buildings), places between ~20° and ~60°.
@@ -486,12 +644,13 @@ export class Viewer {
     const bounds = { min: box.min.toArray() as V3, max: box.max.toArray() as V3 };
     let pose = framePose(bounds, dir, cur.fov, this.engine.camera.aspect, isActor ? 6.5 : 5);
     if (isActor) {
-      // Robots walk between buildings: turn the bearing until nothing solid is in the way.
-      for (const turn of [0, 40, -40, 80, -80, 125, -125, 180]) {
-        const a = (turn * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
-        const p = framePose(bounds, [dir[0] * c - dir[2] * s, dir[1], dir[0] * s + dir[2] * c], cur.fov, this.engine.camera.aspect, 6.5);
-        if (!this.engine.obstructed(p.target, p.position)) { pose = p; break; }
-      }
+      // Robots walk between buildings: turn the bearing (then lower it, then come closer) until
+      // nothing solid is in the way, and stay on the robot's layer (under its ceiling, in its room)
+      const layers = this.layersForFollow();
+      const c = box.getCenter(this.engine.camera.up.clone());
+      const layer = layers.length ? followLayer(layers, [c.x, box.min.y, c.z]) : null;
+      const clear = this.clearFollowPose(bounds, layer, { ...cur, position: [cur.target[0] + dir[0], cur.target[1] + dir[1], cur.target[2] + dir[2]] });
+      if (clear) pose = clear;
     }
     this.flyTo(pose, isActor ? id : null);
     this.activePreset = null;
@@ -536,6 +695,7 @@ export class Viewer {
       if (!(ev.target instanceof HTMLCanvasElement)) return;
       const now = performance.now();
       const t = this.lastTap;
+      if (this.play && this.play.mode !== "orbit") return; // walking / flying: taps are for looking around
       if (t && now - t.t < 320 && Math.hypot(ev.clientX - t.x, ev.clientY - t.y) < 24) {
         this.lastTap = null;
         const hit = this.engine.pickAt(ev.clientX, ev.clientY);
@@ -555,6 +715,8 @@ export class Viewer {
       if (/^[1-9]$/.test(ev.key)) {
         const p = this.presets[Number(ev.key) - 1];
         if (p) { this.selectPreset(p.id); ev.preventDefault(); }
+      } else if ((ev.key === "j" || ev.key === "J") && !this.els.journeys!.hidden && (!this.play || this.play.mode === "orbit")) {
+        this.toggleJourneys();
       } else if (ev.key === "Escape") {
         if (!this.els.presets!.hidden) this.togglePresets(false, true);
         else if (this.selected) this.select(null);
@@ -601,6 +763,10 @@ export class Viewer {
       idle.setAttribute("disabled", "");
       idle.title = "Idle orbit is off (reduced motion)";
     }
+    const jb = btn("journeys", "Journeys: agent work as walks (J)", "journeys", { "aria-pressed": String(this.journeysOn), hidden: "" });
+    jb.insertAdjacentHTML("beforeend", '<span class="tv-icon-label">Journeys <b class="tv-jn"></b></span>');
+    jb.classList.add("tv-wide");
+    jb.addEventListener("click", () => this.toggleJourneys());
     btn("shot", "Save screenshot", "camera");
     if (document.fullscreenEnabled) btn("fs", "Fullscreen", "expand");
     for (const m of ["vr", "ar"] as const) {
@@ -739,12 +905,20 @@ export class Viewer {
 
   private setTitle(title: string) {
     const { name, tagline } = splitTitle(title);
+    if (this.ui) {
+      this.loader.querySelector(".tv-loader-title")!.textContent = name;
+      this.loader.querySelector(".tv-loader-tag")!.textContent = tagline;
+    }
+    this.showTitle(title);
+  }
+
+  /** The HUD title: the name, its tagline (the part after " — "), the page title. */
+  private showTitle(title: string) {
+    const { name, tagline } = splitTitle(title);
     document.title = `${name} · Lumbridge Tera`;
     if (!this.ui) return;
-    this.loader.querySelector(".tv-loader-title")!.textContent = name;
-    this.loader.querySelector(".tv-loader-tag")!.textContent = tagline;
-    this.els.name!.textContent = name;
-    this.els.tag!.textContent = tagline;
+    if (this.els.name!.textContent !== name) this.els.name!.textContent = name;
+    if (this.els.tag!.textContent !== tagline) this.els.tag!.textContent = tagline;
     this.els.brand!.title = `${title} · ${this.engine.backend === "webgpu" ? "WebGPU" : "WebGL 2"}`;
   }
 
@@ -789,8 +963,14 @@ export class Viewer {
 
   private setLive(st: LiveStatus) {
     this.liveStatus = st;
+    if (this.hudAt) return; // the HUD shows an island's own feed (updateCounts)
+    this.showLive(st);
+  }
+
+  private showLive(st: LiveStatus | null) {
     if (!this.ui) return;
     const dot = this.els.live!;
+    if (st === null) { dot.hidden = true; this.els.replayWord!.hidden = true; return; }
     dot.hidden = false;
     const word = st === "open" ? "live" : st === "replay" ? "replay" : st === "connecting" ? (this.firstLoaded ? "reconnecting" : "connecting") : "offline";
     dot.dataset.status = st;
@@ -799,22 +979,68 @@ export class Viewer {
     this.els.replayWord!.hidden = st !== "replay";
   }
 
+  /** Show / hide the journey robots (and their trails, tags and cards). */
+  toggleJourneys(on = !this.journeysOn) {
+    this.journeysOn = on;
+    const tags = this.engine.living.actors.hiddenTags;
+    if (on) tags.delete("journey");
+    else tags.add("journey");
+    store.set("tera:journeys", on ? "1" : "0");
+    if (!on && this.selected && this.engine.shown() && describe(this.engine.shown()!, this.selected)?.kind === "Journey") this.select(null);
+    this.els.journeys?.setAttribute("aria-pressed", String(on));
+    this.toast(on ? "Journeys on" : "Journeys hidden");
+  }
+
   private updateCounts() {
-    if (!this.ui) return;
+    const at = this.hudIsland();
+    const changed = at !== this.hudAt;
+    this.hudAt = at;
+    if (!this.ui) { if (changed) this.showTitle(this.islandTitle(at)); return; }
     const w = this.engine.shown();
-    const n = w ? countAgents(w) : 0;
+    const jn = w ? countTagged(w, "journey") : 0;
+    const jb = this.els.journeys;
+    if (jb) {
+      // the toggle appears once a feed has sent journeys (or the page asked for it)
+      if (jn > 0 || this.params.has("journeys")) jb.hidden = false;
+      jb.querySelector(".tv-jn")!.textContent = jn ? String(jn) : "";
+    }
+    // the HUD follows the island you are on (or look at): its name, its feed, its agents, its people
+    const title = this.islandTitle(at);
+    this.showTitle(title); // (an island's own title arrives once it has loaded)
+    const iw = at ? this.engine.islandWorld(at) : null;
+    let n: number;
+    if (at) n = iw ? countAgents(iw) : 0;
+    else {
+      n = w ? countAgents(w) : 0;
+      for (const r of this.islands?.refs() ?? []) { const x = this.engine.islandWorld(r.id); if (x) n -= countAgents(x); }
+    }
     const el = this.els.agents!;
-    el.hidden = n === 0 && !this.liveUrl && !this.replayUrl;
+    el.hidden = at ? !iw : n === 0 && !this.liveUrl && !this.replayUrl;
     const words = `${n} ${n === 1 ? "agent" : "agents"}`;
     el.querySelector("b")!.textContent = String(n);
     el.querySelector(".tv-w")!.textContent = n === 1 ? " agent" : " agents";
-    el.title = `${words} in the town`;
+    el.title = `${words} on ${splitTitle(title).name}`;
+    // the legend of the island it speaks for (its own, once loaded)
+    const lw = iw ?? w;
+    const lk = lw ? JSON.stringify(legendOf(lw)) : "";
+    if (lw && lk !== this.legendKey) this.renderLegend(lw);
     el.setAttribute("aria-label", words);
+    this.showLive(at ? this.islands?.liveOf(at) ?? null : this.liveStatus);
+    this.play?.peopleOf(at);
   }
+
+  /** The title of the island `id` (its own world's, once loaded; its name until then), or the home world's. */
+  private islandTitle(id: string | null): string {
+    if (!id) return this.homeTitle;
+    return this.engine.islandWorld(id)?.title ?? this.islands?.refs().find((r) => r.id === id)?.name ?? this.homeTitle;
+  }
+
+  private legendKey = "";
 
   private renderLegend(w: WorldPack) {
     if (!this.ui) return;
     const items = legendOf(w);
+    this.legendKey = JSON.stringify(items);
     const el = this.els.legend!;
     el.hidden = !items;
     el.innerHTML = (items ?? []).map((i) => `<span class="tv-key"><i style="--c:${esc(i.color)}"></i>${esc(i.label)}</span>`).join("");
@@ -829,7 +1055,7 @@ export class Viewer {
       return `<p class="tv-sec" role="presentation">${title}</p>` + list.map(({ p, i }) =>
         `<button type="button" role="menuitem" class="tv-item" data-preset="${esc(p.id)}"><span>${esc(p.name)}</span>${i < 9 ? `<kbd aria-hidden="true">${i + 1}</kbd>` : ""}</button>`).join("");
     };
-    el.innerHTML = section("view", "Views") + section("place", "Buildings");
+    el.innerHTML = section("view", "Views") + section("island", "Islands") + section("place", "Buildings");
     el.querySelectorAll<HTMLButtonElement>("[data-preset]").forEach((b) => b.addEventListener("click", () => {
       this.selectPreset(b.dataset.preset!);
       this.togglePresets(false);
@@ -877,6 +1103,12 @@ export class Viewer {
   private refreshCard() {
     const w = this.engine.shown();
     const c: Card | null = w && this.selected ? describe(w, this.selected) : null;
+    // a robot's card shows what it is doing right now (walking / working at a stop), not just its JSON state
+    const act = c?.kind && this.selected ? this.engine.living.actors.activity(this.selected) : null;
+    if (c && act && !(act.phase === "idle" && c.state === "at home")) {
+      c.state = act.phase;
+      if (act.stop) c.state = `${act.phase} · ${pretty(act.stop.replace(/\.(door|work)$/, "").split(".").pop()!)}`;
+    }
     const el = this.els.card!;
     if (!c) {
       el.hidden = true;
@@ -899,6 +1131,7 @@ export class Viewer {
       </div>
       ${c.detail ? `<p class="tv-card-detail">${esc(c.detail)}</p>` : ""}
       ${c.meters.length ? `<div class="tv-meters">${c.meters.map(meter).join("")}</div>` : ""}
+      ${c.facts?.length ? `<dl class="tv-facts">${c.facts.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(f.value)}</dd>`).join("")}</dl>` : ""}
       ${c.chips.length ? `<p class="tv-chips">${c.chips.slice(0, 5).map((t) => `<span>${esc(t)}</span>`).join("")}</p>` : ""}
       <button type="button" class="tv-btn tv-fly">${icon("target")}<span>Fly to</span></button>`;
     el.hidden = false;
@@ -931,9 +1164,12 @@ export class Viewer {
     }
   }
 
+  /** The player (walk / fly / layers / presence), once the first world is in. */
+  get player(): Play | null { return this.play; }
+
   /** For tests and devtools. */
   state() {
-    return { sky: this.engine.skyClockState(), firstLoaded: this.firstLoaded, level: LEVELS[this.level]!.name, presets: this.presets.map((p) => p.id), selected: this.selected, flying: !!this.flight, orbiting: this.orbiting, live: this.liveStatus, replay: this.replay ? { t: this.replay.t, loops: this.replay.loops, duration: this.replay.replay.duration, speed: this.replay.speed } : null };
+    return { sky: this.engine.skyClockState(), firstLoaded: this.firstLoaded, level: LEVELS[this.level]!.name, presets: this.presets.map((p) => p.id), selected: this.selected, flying: !!this.flight, orbiting: this.orbiting, live: this.liveStatus, replay: this.replay ? { t: this.replay.t, loops: this.replay.loops, duration: this.replay.replay.duration, speed: this.replay.speed } : null, play: this.play?.state() ?? null, islands: this.islands?.state(this.play?.island ?? null) ?? [] };
   }
 }
 

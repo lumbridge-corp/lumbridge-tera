@@ -1,0 +1,32 @@
+{
+  "tera": "world/v1",
+  "id": "screens",
+  "title": "Screens — video, image, youtube card, off",
+  "sky": { "mode": "sun", "time": "2026-11-17T15:30:00-08:00", "lat": 37.77, "lon": -122.42 },
+  "environment": { "exposure": 1.0, "post": { "bloom": { "strength": 0.4 } } },
+  "entities": [
+    { "id": "floor", "kind": "primitive", "shape": "plane", "size": [40, 40], "material": { "color": "#e9e2d4", "roughness": 0.9 } },
+    { "id": "wall", "kind": "primitive", "shape": "box", "size": [16, 4, 0.2], "transform": { "position": [0, 2, -0.6] }, "material": { "color": "#f3ede2", "roughness": 0.85 } },
+    { "id": "console", "kind": "primitive", "shape": "box", "size": [15, 0.5, 0.6], "radius": 0.04, "transform": { "position": [0, 0.25, -0.15] }, "material": { "color": "#cfae80", "roughness": 0.7 } },
+    { "id": "tv-video", "kind": "primitive", "shape": "box", "size": [3.2, 1.8, 0.05], "radius": 0.012, "transform": { "position": [-5.4, 1.75, -0.47] },
+      "material": { "screen": { "content": { "kind": "video", "src": "assets/test.mp4", "title": "Test pattern" } } } },
+    { "id": "tv-image", "kind": "primitive", "shape": "box", "size": [3.2, 1.8, 0.05], "radius": 0.012, "transform": { "position": [-1.8, 1.75, -0.47] },
+      "material": { "screen": { "content": { "kind": "image", "src": "assets/picture.png" } } } },
+    { "id": "tv-youtube", "kind": "primitive", "shape": "box", "size": [3.2, 1.8, 0.05], "radius": 0.012, "transform": { "position": [1.8, 1.75, -0.47] },
+      "material": { "screen": { "youtubeThumb": "assets/thumb.jpg", "content": { "kind": "youtube", "videoId": "abc123", "title": "Fractal zoom, four hours of slow drift through the set", "channel": "Example Channel", "live": true, "playing": true } } } },
+    { "id": "tv-off", "kind": "primitive", "shape": "box", "size": [3.2, 1.8, 0.05], "radius": 0.012, "transform": { "position": [5.4, 1.75, -0.47] },
+      "material": { "screen": true } },
+    { "id": "tablet", "kind": "primitive", "shape": "plane", "size": [1.6, 0.9], "transform": { "position": [0, 0.52, 0.0], "rotation": [10, 0, 0] },
+      "material": { "screen": { "content": { "kind": "youtube", "videoId": "nothumb", "title": "No thumbnail: the calm title card", "channel": "Example", "playing": false } } } },
+    { "id": "tablet-panel", "kind": "primitive", "shape": "plane", "size": [1.6, 0.9], "transform": { "position": [-1.9, 0.52, 0.0], "rotation": [10, 0, 0] },
+      "material": { "screen": { "content": { "kind": "panel", "title": "Fleet", "subtitle": "four machines, one desk", "status": "all up",
+        "rows": [{ "label": "cpu", "value": 0.42, "text": "42%" }, { "label": "gpu", "value": 0.18, "text": "18%" }, { "label": "agents", "text": "7" }],
+        "series": [0.1, 0.2, 0.15, 0.4, 0.35, 0.6, 0.5, 0.45, 0.7, 0.55] } } } },
+    { "id": "lamp", "kind": "light", "light": "point", "color": "#ffd9a0", "intensity": 6, "distance": 8, "transform": { "position": [0, 3.2, 2] } }
+  ],
+  "cameras": {
+    "default": { "position": [0, 2.4, 9.5], "target": [0, 1.5, -0.5], "fov": 50 },
+    "close": { "position": [3.2, 2.1, 2.6], "target": [1.8, 1.7, -0.47], "fov": 40 },
+    "side": { "position": [7.5, 2.6, 3.5], "target": [3.5, 1.6, -0.5], "fov": 45 }
+  }
+}

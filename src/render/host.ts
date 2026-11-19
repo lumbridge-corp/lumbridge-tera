@@ -97,11 +97,27 @@ export function startStaticServer(worldDir: string | undefined, port = 0, host =
       res.writeHead(404, { "content-type": "text/plain" }).end(`not found: ${path}`);
       return;
     }
-    res.writeHead(200, {
+    const headers = {
       "content-type": MIME[extname(file).toLowerCase()] ?? "application/octet-stream",
       "cache-control": "no-store",
       "access-control-allow-origin": "*",
-    });
+      "accept-ranges": "bytes",
+    };
+    // byte ranges: <video> (screens) needs them to seek
+    const size = statSync(file).size;
+    const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? "");
+    if (m && (m[1] || m[2])) {
+      const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+      const end = m[1] && m[2] ? Math.min(size - 1, Number(m[2])) : size - 1;
+      if (start > end || start >= size) {
+        res.writeHead(416, { ...headers, "content-range": `bytes */${size}` }).end();
+        return;
+      }
+      res.writeHead(206, { ...headers, "content-range": `bytes ${start}-${end}/${size}`, "content-length": end - start + 1 });
+      createReadStream(file, { start, end }).pipe(res);
+      return;
+    }
+    res.writeHead(200, { ...headers, "content-length": size });
     createReadStream(file).pipe(res);
   });
   return new Promise((ok, fail) => {

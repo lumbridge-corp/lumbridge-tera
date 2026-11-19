@@ -10,23 +10,37 @@
 // of time (living-math.ts), so render mode is deterministic.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import type { ActorMove } from "../schema/living.ts";
-import { actorPose, autoLane, hash01, nearestNode, nearestS, roundCorners, route, samplePath, samplePoints, separate, type ActorPose, type Phase, type Sampled, type V3 } from "./living-math.ts";
+import type { ActorCard, ActorMove, ActorTrail } from "../schema/living.ts";
+import { actorPose, autoLane, hash01, nearestNode, nearestS, roundCorners, route, samplePath, samplePoints, separate, travel, DEFAULT_SPEED, type ActorPose, type Phase, type Sampled, type V3 } from "./living-math.ts";
+import { QUEUE_EASE, journeyPlan, journeyPoint, journeyPose, queueOffset, queuePlaces, type JourneyPlan, type StopVisit } from "./journey-math.ts";
 import type { LivingWorld } from "./flows.ts";
 import { makeExact } from "./exact.ts";
 import { labelFit, type LabelFitOptions } from "./label-fit.ts";
+import { PLATE_FIT, ResidentFigure } from "./residents.ts";
+import type { ResidentDef } from "../schema/residents.ts";
 
 export interface ActorSpec {
   id: string;
   kind: "actor";
-  style?: "worker" | "model";
+  style?: "worker" | "model" | "resident";
   src?: string;
+  resident?: string;
   color?: string;
   label?: string;
   state?: Phase;
   move?: ActorMove;
+  trail?: ActorTrail;
+  card?: ActorCard;
+  tags?: string[];
   transform?: { position?: V3; rotation?: V3; scale?: number | V3 };
   visible?: boolean;
+}
+
+/** A journey (move.stops) as built for the current world: its plan and the stop nodes. */
+interface JourneyRec {
+  plan: JourneyPlan;
+  nodes: string[];
+  nodePos: V3[];
 }
 
 export interface LivingHooks {
@@ -246,8 +260,16 @@ interface ActorRec {
   seed: number;
   label?: THREE.Sprite;
   model?: THREE.Group;
+  figure?: ResidentFigure;
+  figureKey?: string;
   pose: ActorPose;
   disposed: boolean;
+  journey?: JourneyRec;
+  /** Journey state this frame (null when not on a journey). */
+  jat?: { stop: number; since: number; startT: number; s: number; walking: boolean; tau: number } | null;
+  trail?: THREE.Mesh;
+  /** When its current name tag appeared (older tags win a declutter). */
+  labelSeq?: number;
 }
 
 const _m = new THREE.Matrix4();
@@ -280,6 +302,12 @@ export class ActorSystem {
   labelFit: LabelFitOptions | null = null;
   /** Viewport height in CSS px (label fitting). */
   viewportH = 720;
+  /** world.residents by id (looks, names, roles of style "resident" actors). */
+  private residents = new Map<string, ResidentDef>();
+  private residentsKey = "";
+  /** Viewport width in CSS px (label declutter). */
+  viewportW = 1280;
+  private labelSeqs = 0;
 
   constructor(private renderMode: boolean, private hooks: LivingHooks) {
     this.root.name = "__actors";
@@ -297,6 +325,37 @@ export class ActorSystem {
       this.worldKey = key;
       for (const r of this.recs.values()) r.routeKey = "";
     }
+  }
+
+  /** The world's residents (world.residents): a changed look rebuilds the figures that use it. */
+  setResidents(list: ResidentDef[] | undefined) {
+    const key = sigOf(list ?? []);
+    if (key === this.residentsKey) return;
+    this.residentsKey = key;
+    this.residents = new Map((list ?? []).map((r) => [r.id, r]));
+    for (const r of this.recs.values()) if (r.figure) this.setFigure(r);
+  }
+
+  private figureKeyOf(spec: ActorSpec): string {
+    const def = spec.resident ? this.residents.get(spec.resident) : undefined;
+    return sigOf([spec.resident, spec.color, spec.label, def ?? null]);
+  }
+
+  /** Build (or rebuild) the figure of a style "resident" actor; drop it for any other style. */
+  private setFigure(r: ActorRec) {
+    const want = r.spec.style === "resident";
+    const key = want ? this.figureKeyOf(r.spec) : "";
+    if (r.figure && r.figureKey === key) return;
+    r.figure?.dispose();
+    r.figure = undefined;
+    r.figureKey = undefined;
+    if (!want) return;
+    const def = r.spec.resident ? this.residents.get(r.spec.resident) ?? null : null;
+    const name = r.spec.label || def?.name || r.spec.resident || r.spec.id;
+    r.figure = new ResidentFigure(def, r.spec.color, name, r.seed);
+    r.figureKey = key;
+    this.root.add(r.figure.root);
+    if (r.figure.plate) this.root.add(r.figure.plate);
   }
 
   /** Add or refresh an actor from its JSON (called on every sync). */
@@ -327,7 +386,15 @@ export class ActorSystem {
     r.routeKey = "";
     r.seed = Math.floor(hash01(spec.id.split("").reduce((a, c) => a * 31 + c.charCodeAt(0), 7), 3) * 1e6);
     r.color.set(spec.color ?? PALETTE[r.seed % PALETTE.length]!);
-    if (labelChanged || !spec.label) {
+    if (spec.style === "resident" || r.figure) this.setFigure(r);
+    if (spec.style === "resident") {
+      if (r.label) {
+        r.label.removeFromParent();
+        (r.label.material as THREE.SpriteMaterial).map?.dispose();
+        r.label.material.dispose();
+        r.label = undefined;
+      }
+    } else if (labelChanged || !spec.label) {
       if (r.label) {
         r.label.removeFromParent();
         (r.label.material as THREE.SpriteMaterial).map?.dispose();
@@ -336,6 +403,7 @@ export class ActorSystem {
       }
       if (spec.label) {
         r.label = labelSprite(spec.label);
+        r.labelSeq = ++this.labelSeqs;
         this.root.add(r.label);
       }
     }
@@ -353,6 +421,12 @@ export class ActorSystem {
       r.label.material.dispose();
     }
     r.model?.removeFromParent();
+    r.figure?.dispose();
+    if (r.trail) {
+      r.trail.removeFromParent();
+      r.trail.geometry.dispose();
+      (r.trail.material as THREE.Material).dispose();
+    }
     this.recs.delete(id);
   }
 
@@ -378,6 +452,7 @@ export class ActorSystem {
   }
 
   private buildRoute(r: ActorRec): Sampled | null {
+    r.journey = undefined;
     const m = r.spec.move;
     if (!m) {
       if (r.origin && !this.renderMode) {
@@ -402,6 +477,7 @@ export class ActorSystem {
     const startPos = (r.origin ?? r.spec.transform?.position ?? null) as V3 | null;
     const from = m.from ?? (startPos ? nearestNode(g, startPos) : undefined);
     if (!from) return null;
+    if (m.stops?.length) return this.buildJourney(r, from, !m.from ? startPos : null);
     const pts = route(g, this.world.paths, from, m.to);
     if (!pts) {
       this.hooks.warn(`actor "${r.spec.id}": no route from "${from}" to "${m.to}"`);
@@ -412,6 +488,45 @@ export class ActorSystem {
       if (d > 0.05) pts.unshift(startPos);
     }
     return samplePoints(roundCorners(pts, 0.9), {});
+  }
+
+  /** A journey's route: from → every stop → to, one polyline, with its plan (journey-math.ts). */
+  private buildJourney(r: ActorRec, from: string, startPos: V3 | null): Sampled | null {
+    const g = this.world.graph!;
+    const m = r.spec.move!;
+    const stops = m.stops!;
+    const legs: V3[][] = [];
+    let a = from;
+    for (const n of [...stops.map((x) => x.to), m.to!]) {
+      const pts = route(g, this.world.paths, a, n);
+      if (!pts) {
+        this.hooks.warn(`actor "${r.spec.id}": no route from "${a}" to "${n}"`);
+        return null;
+      }
+      legs.push(pts);
+      a = n;
+    }
+    if (startPos) {
+      const p0 = legs[0]![0]!;
+      if (Math.hypot(startPos[0] - p0[0], startPos[2] - p0[2]) > 0.05) legs[0]!.unshift(startPos);
+    }
+    const rounded = legs.map((pts) => roundCorners(pts, 0.9));
+    const lens = rounded.map((pts) => pts.reduce((sum, p, i) => (i ? sum + Math.hypot(p[0] - pts[i - 1]![0], p[1] - pts[i - 1]![1], p[2] - pts[i - 1]![2]) : 0), 0));
+    const pos = new Map(g.nodes.map((n) => [n.id, n.position as V3]));
+    r.journey = {
+      plan: journeyPlan(lens, stops, m.speed ?? DEFAULT_SPEED),
+      nodes: stops.map((x) => x.to),
+      nodePos: stops.map((x) => pos.get(x.to) ?? [0, 0, 0]),
+    };
+    return samplePoints(rounded.flat(), {});
+  }
+
+  /** Actors carrying any of these tags are not drawn, labelled or pickable (viewer toggles, e.g. "journey"). */
+  readonly hiddenTags = new Set<string>();
+  private shown(r: ActorRec): boolean {
+    if (r.spec.visible === false) return false;
+    if (!this.hiddenTags.size || !r.spec.tags) return true;
+    return !r.spec.tags.some((t) => this.hiddenTags.has(t));
   }
 
   private ensureMeshes(n: number) {
@@ -456,10 +571,11 @@ export class ActorSystem {
     const sphere = new THREE.Sphere();
     const at = new THREE.Vector3();
     for (const r of this.recs.values()) {
-      if (r.spec.visible === false) continue;
+      if (!this.shown(r)) continue;
       const s = scaleOf(r.spec.transform);
-      sphere.center.set(r.pose.pos[0], r.pose.pos[1] + 0.55 * s, r.pose.pos[2]);
-      sphere.radius = 0.55 * s;
+      const h = r.figure ? r.figure.height(s) / 2 : 0.55 * s;
+      sphere.center.set(r.pose.pos[0], r.pose.pos[1] + h, r.pose.pos[2]);
+      sphere.radius = h;
       if (!ray.intersectSphere(sphere, at)) continue;
       const d = at.distanceTo(ray.origin);
       if (!best || d < best.distance) best = { id: r.spec.id, distance: d, point: at.clone() };
@@ -467,11 +583,19 @@ export class ActorSystem {
     return best;
   }
 
+  /** What an actor is doing at the last update: its phase and, on a journey, the stop it stands at. */
+  activity(id: string): { phase: Phase; stop?: string } | null {
+    const r = this.recs.get(id);
+    if (!r) return null;
+    const stop = r.journey && r.jat && r.jat.stop >= 0 ? r.journey.nodes[r.jat.stop] : undefined;
+    return { phase: r.pose.phase, ...(stop ? { stop } : {}) };
+  }
+
   /** World box around an actor at its current pose, or null when there is no such actor. */
   box(id: string): THREE.Box3 | null {
     const r = this.recs.get(id);
     if (!r) return null;
-    const s = scaleOf(r.spec.transform), p = r.pose.pos;
+    const s = scaleOf(r.spec.transform) * (r.figure ? r.figure.look.scale : 1), p = r.pose.pos;
     return new THREE.Box3(new THREE.Vector3(p[0] - 0.45 * s, p[1], p[2] - 0.45 * s), new THREE.Vector3(p[0] + 0.45 * s, p[1] + 1.2 * s, p[2] + 0.45 * s));
   }
 
@@ -494,21 +618,32 @@ export class ActorSystem {
           if (r.liveOffset !== undefined) move.offset = r.liveOffset;
         }
         const lane = spec.move?.lane ?? autoLane(r.seed) * scaleOf(spec.transform);
-        r.pose = actorPose(r.route, move, rest, t, lane);
+        if (r.journey) {
+          const startT = move.startT ?? 0;
+          const jp = journeyPose(r.route, r.journey.plan, rest, t - startT, lane);
+          r.pose = jp;
+          r.jat = { stop: jp.at.stop, since: jp.at.since, startT, s: jp.at.s, walking: jp.at.phase === "walking", tau: t - startT };
+        } else {
+          r.pose = actorPose(r.route, move, rest, t, lane);
+          r.jat = null;
+        }
       } else {
+        r.jat = null;
         const p = (spec.transform?.position ?? [0, 0, 0]) as V3;
         const yaw = THREE.MathUtils.degToRad(spec.transform?.rotation?.[1] ?? 0);
         r.pose = { pos: [p[0], p[1], p[2]], yaw, phase: rest === "walking" ? "walking" : rest, since: t + 100, speed: rest === "walking" ? 0.35 : 0, stride: rest === "walking" ? t * 0.5 : 0 };
       }
     }
+    this.queue();
     // Crowds: walkers step around each other (stateless, so render mode stays pose = f(t)).
-    const all = [...this.recs.values()].filter((r) => r.spec.visible ?? true);
-    separate(all.map((r) => r.pose.pos), all.map((r) => 0.55 * scaleOf(r.spec.transform)), all.map((r) => !!r.route));
+    // Journey actors standing at a stop count as standing (the queue placed them); residents are bigger.
+    const all = [...this.recs.values()].filter((r) => this.shown(r));
+    separate(all.map((r) => r.pose.pos), all.map((r) => 0.55 * scaleOf(r.spec.transform) * (r.figure ? r.figure.look.scale : 1)), all.map((r) => !!r.route && !(r.jat && r.jat.stop >= 0)));
     for (const r of this.recs.values()) {
       const spec = r.spec;
       const mem = this.memory.get(spec.id);
       if (mem) { mem.pos = r.pose.pos; mem.yaw = r.pose.yaw; }
-      const visible = spec.visible ?? true;
+      const visible = this.shown(r);
       if (r.label) {
         r.label.visible = visible;
         const s = scaleOf(spec.transform);
@@ -523,8 +658,15 @@ export class ActorSystem {
         r.model.scale.setScalar(s);
         r.model.position.y += Math.abs(Math.sin(r.pose.stride * Math.PI / 0.45)) * 0.03 * r.pose.speed * s;
       }
+      if (r.figure) {
+        r.figure.root.visible = visible;
+        if (visible) r.figure.pose(r.pose, t, scaleOf(spec.transform));
+        r.figure.placePlate(camera, this.labelFit ? PLATE_FIT : null, this.viewportH, visible && spec.label !== "");
+      }
       if ((spec.style ?? "worker") === "worker" && visible) workers.push(r);
     }
+    if (!this.renderMode && this.labelFit) this.declutter(camera);
+    this.updateTrails();
     this.ensureMeshes(workers.length);
     for (const m of this.meshes.values()) m.count = workers.length;
     if (!workers.length) return;
@@ -538,6 +680,109 @@ export class ActorSystem {
         m.boundingSphere = null;
       }
     }
+  }
+
+  /**
+   * Journey queues: actors standing at the same stop at the same time take places around it
+   * (journey-math.ts queuePlaces / queueOffset), stepping there and back over QUEUE_EASE and
+   * turning to face the stop. A pure function of every journey's plan and t.
+   */
+  private queue() {
+    const standing = [...this.recs.values()].filter((r) => r.jat && r.jat.stop >= 0 && this.shown(r));
+    if (!standing.length) return;
+    const visits: StopVisit[] = [];
+    for (const r of this.recs.values()) {
+      if (!r.journey || !r.jat || !this.shown(r)) continue;
+      const p = r.journey.plan;
+      for (let i = 0; i < p.arrive.length; i++) visits.push({ key: r.spec.id, node: r.journey.nodes[i]!, a: r.jat.startT + p.arrive[i]!, b: r.jat.startT + p.depart[i]! });
+    }
+    const places = queuePlaces(visits);
+    for (const r of standing) {
+      const i = r.jat!.stop, p = r.journey!.plan;
+      const place = places.get(`${r.spec.id}@${r.jat!.startT + p.arrive[i]!}`) ?? 0;
+      if (place <= 0) continue;
+      const off = queueOffset(place, r.pose.yaw, 0.75 * scaleOf(r.spec.transform));
+      const dwell = p.dwell[i]!;
+      const e = smooth01(Math.min(r.jat!.since, dwell - r.jat!.since) / QUEUE_EASE);
+      r.pose.pos[0] += off[0] * e;
+      r.pose.pos[2] += off[2] * e;
+      const n = r.journey!.nodePos[i]!;
+      const face = Math.atan2(n[0] - r.pose.pos[0], n[2] - r.pose.pos[2]);
+      let d = face - r.pose.yaw;
+      d = ((d + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+      r.pose.yaw += d * e;
+    }
+  }
+
+  /**
+   * Live mode: name tags never sit on top of each other. Tags are projected to the screen; a tag
+   * overlapping one that appeared earlier is hidden until they part. (Render mode never does this:
+   * frames stay a function of the script only.)
+   */
+  private declutter(camera: THREE.Camera) {
+    const cam = camera as THREE.PerspectiveCamera;
+    const k = this.viewportH / (2 * Math.tan(THREE.MathUtils.degToRad((cam.fov ?? 45) / 2)));
+    const placed: [number, number, number, number][] = [];
+    const list = [...this.recs.values()].filter((r) => r.label?.visible).sort((a, b) => (a.labelSeq ?? 0) - (b.labelSeq ?? 0));
+    for (const r of list) {
+      const l = r.label!;
+      _p.copy(l.position).applyMatrix4(cam.matrixWorldInverse);
+      const d = -_p.z;
+      if (d <= 0.05) continue;
+      _p.copy(l.position).project(cam);
+      const x = (_p.x * 0.5 + 0.5) * this.viewportW, y = (-_p.y * 0.5 + 0.5) * this.viewportH;
+      const w = (l.scale.x * k) / d, h = (l.scale.y * k) / d;
+      const box: [number, number, number, number] = [x - w / 2, y - h, x + w / 2, y];
+      if (placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) {
+        l.visible = false;
+        continue;
+      }
+      placed.push(box);
+    }
+  }
+
+  // ---------------------------------------------------------------- trails
+
+  /**
+   * Trails (`trail`): a ribbon on the ground over the stretch walked in the last `seconds`
+   * (journeys and one-shot `to` walks), fading to nothing at the tail. It shrinks away while
+   * the actor stands. One small mesh per trailed actor; pure function of t.
+   */
+  private updateTrails() {
+    for (const r of this.recs.values()) {
+      const tr = r.spec.trail;
+      const span = tr && this.shown(r) && r.route ? this.trailSpan(r, tr.seconds ?? 2.4) : null;
+      if (!span || span[1] - span[0] < 0.05) {
+        if (r.trail) r.trail.visible = false;
+        continue;
+      }
+      if (!r.trail) {
+        r.trail = makeTrailMesh();
+        this.root.add(r.trail);
+      }
+      const mat = r.trail.material as THREE.MeshBasicMaterial;
+      mat.color.set(tr!.color ?? r.spec.color ?? "#ffffff");
+      mat.opacity = tr!.opacity ?? 0.8;
+      r.trail.visible = true;
+      const lane = r.spec.move?.lane ?? autoLane(r.seed) * scaleOf(r.spec.transform);
+      writeTrail(r.trail.geometry, r.route!, r.journey?.plan.marks ?? [], span[0], span[1], lane, (tr!.width ?? 0.14) * scaleOf(r.spec.transform));
+    }
+  }
+
+  /** [tail, head] arc lengths of the stretch walked in the last `seconds`, or null. */
+  private trailSpan(r: ActorRec, seconds: number): [number, number] | null {
+    if (r.journey && r.jat) {
+      const p = r.journey.plan;
+      const tail = journeyPose(r.route!, p, "idle", r.jat.tau - seconds, 0).at.s;
+      return [tail, r.jat.s];
+    }
+    const m = r.spec.move;
+    if (!m || m.path || m.loop || r.route!.closed) return null;
+    const v = m.speed ?? DEFAULT_SPEED;
+    const startT = !this.renderMode && r.origin ? r.epoch + (m.startT && m.startT > 0 ? m.startT : 0) : m.startT ?? 0;
+    const s0 = Math.min(Math.max(m.offset ?? 0, 0), r.route!.length);
+    const at = (tau: number) => (tau <= 0 ? s0 : s0 + travel(r.route!.length - s0, v, tau).s);
+    return [at(this.now - startT - seconds), at(this.now - startT)];
   }
 
   private set(name: PartName, i: number, local: THREE.Matrix4 | null, color?: THREE.Color) {
@@ -627,4 +872,71 @@ export class ActorSystem {
     const bs = 0.62 - bob * 2;
     this.set("blob", i, L(0, 0, 0.02, 0, 0, 0, bs, 1, bs));
   }
+}
+
+// ---------------------------------------------------------------- trail meshes
+
+const TRAIL_SEGS = 28;
+let trailTex: THREE.Texture | null = null;
+/** Alpha ramp along a trail: 0 at the tail (u = 0) to 1 at the feet (u = 1). */
+function trailTexture(): THREE.Texture {
+  if (trailTex) return trailTex;
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 4;
+  const g = c.getContext("2d")!;
+  const grd = g.createLinearGradient(0, 0, 128, 0);
+  grd.addColorStop(0, "rgba(255,255,255,0)");
+  grd.addColorStop(0.55, "rgba(255,255,255,0.45)");
+  grd.addColorStop(0.92, "rgba(255,255,255,1)");
+  grd.addColorStop(1, "rgba(255,255,255,0.6)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 128, 4);
+  trailTex = new THREE.CanvasTexture(c);
+  trailTex.colorSpace = THREE.SRGBColorSpace;
+  trailTex.userData.shared = true;
+  return trailTex;
+}
+
+function makeTrailMesh(): THREE.Mesh {
+  const n = TRAIL_SEGS + 1;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 2 * 3), 3).setUsage(THREE.DynamicDrawUsage));
+  const uv = new Float32Array(n * 2 * 2);
+  for (let i = 0; i < n; i++) {
+    const u = i / TRAIL_SEGS;
+    uv.set([u, 0, u, 1], i * 4);
+  }
+  geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  const idx: number[] = [];
+  for (let i = 0; i < TRAIL_SEGS; i++) {
+    const a = i * 2;
+    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+  geo.setIndex(idx);
+  const mat = new THREE.MeshBasicMaterial({ map: trailTexture(), transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = "__actor-trail";
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 2;
+  return mesh;
+}
+
+const _tp: V3 = [0, 0, 0], _tq: V3 = [0, 0, 0], _tt: V3 = [0, 0, 1];
+/** Fill a trail ribbon over [s0, s1] of `route` (lane-shifted like the walker), lying on the ground. */
+function writeTrail(geo: THREE.BufferGeometry, routeP: Sampled, marks: number[], s0: number, s1: number, lane: number, width: number) {
+  const pos = geo.getAttribute("position") as THREE.BufferAttribute;
+  const arr = pos.array as Float32Array;
+  for (let i = 0; i <= TRAIL_SEGS; i++) {
+    const s = s0 + ((s1 - s0) * i) / TRAIL_SEGS;
+    journeyPoint(routeP, marks, s, lane, _tp, _tt);
+    // the ribbon narrows towards the tail
+    const w = width * (0.35 + 0.65 * (i / TRAIL_SEGS)) * 0.5;
+    let nx = -_tt[2], nz = _tt[0];
+    const h = Math.hypot(nx, nz);
+    if (h > 1e-6) { nx /= h; nz /= h; } else { nx = 1; nz = 0; }
+    _tq[0] = _tp[0]; _tq[1] = _tp[1] + 0.035; _tq[2] = _tp[2];
+    arr.set([_tq[0] + nx * w, _tq[1], _tq[2] + nz * w, _tq[0] - nx * w, _tq[1], _tq[2] - nz * w], i * 6);
+  }
+  pos.needsUpdate = true;
 }

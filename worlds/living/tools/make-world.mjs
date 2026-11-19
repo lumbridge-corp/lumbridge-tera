@@ -154,6 +154,11 @@ const world = {
     street: { position: [-5, 1.6, 8], target: [-4, 0.9, 0], fov: 45 },
     tunnel: { position: [14, -3.2, 0.5], target: [0, -3.6, 0], fov: 55 },
   },
+  // walk / fly / layer travel in the live viewer (CONTRACT.md 1c, docs/players.md)
+  layers: [
+    { id: "street", name: "Street", floorY: 0, walk: { center: [0, 0], radius: 24 }, spawn: [-4, 0, 2.4], camera: "street" },
+    { id: "underworks", name: "Underworks", floorY: -6, walk: { center: [1, 0], radius: 22 }, spawn: [-6, -6, 0.6], camera: "tunnel", height: 5.5 },
+  ],
 };
 writeFileSync(new URL("../world.json", import.meta.url), JSON.stringify(world, null, 1) + "\n");
 console.log(`world.json: ${world.entities.length} entities, ${paths.length} paths, ${world.graph.nodes.length} nodes`);
