@@ -25,7 +25,7 @@ export interface FlowSpec {
   size?: number;
   glow?: boolean;
   style?: "dots" | "dashes" | "comet";
-  pipe?: boolean | { radius?: number; color?: string; opacity?: number };
+  pipe?: boolean | { radius?: number; color?: string; opacity?: number; collars?: false | { every?: number; max?: number; tube?: number; color?: string } };
 }
 
 export interface MeterSpec {
@@ -171,12 +171,17 @@ export class FlowObject {
       makeExact(new THREE.MeshBasicMaterial({ ...additive }), this.color.clone().multiplyScalar(0.18)),
     );
     axis.renderOrder = 5;
-    // Collars every ~2.4 m: dark metal rings that make it read as a pipe.
-    const step = 2.4;
+    // Collars: dark metal rings every ~2.4 m that make it read as a pipe. `collars` tunes them
+    // (false = none; every / max: a long run spreads at most `max` rings; tube; color).
+    this.pipe = [inner, axis, shell];
+    for (const o of this.pipe) this.obj.add(o);
+    if (def.collars === false) return;
+    const cd = def.collars ?? {};
+    const step = Math.max(cd.every ?? 2.4, cd.max ? path.length / (cd.max - 1) : 0);
     const count = Math.max(2, Math.floor(path.length / step) + 1);
     const collar = new THREE.InstancedMesh(
-      new THREE.TorusGeometry(r * 1.04, r * 0.13, 10, 28),
-      new THREE.MeshStandardMaterial({ color: "#3a404a", roughness: 0.35, metalness: 0.85 }),
+      new THREE.TorusGeometry(r * 1.04, r * (cd.tube ?? 0.13), 10, 28),
+      new THREE.MeshStandardMaterial({ color: cd.color ?? "#3a404a", roughness: 0.35, metalness: 0.85 }),
       count,
     );
     for (let i = 0; i < count; i++) {
@@ -188,8 +193,8 @@ export class FlowObject {
     }
     collar.castShadow = true;
     collar.receiveShadow = true;
-    this.pipe = [inner, axis, shell, collar];
-    for (const o of this.pipe) this.obj.add(o);
+    this.pipe.push(collar);
+    this.obj.add(collar);
   }
 
   update(t: number, camera: THREE.Camera) {

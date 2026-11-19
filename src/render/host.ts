@@ -30,6 +30,8 @@ export interface OpenOptions {
   timeoutMs?: number;
   /** Rebuild dist/ even if it looks fresh. */
   rebuild?: boolean;
+  /** Render mode: "fit" sizes actor name tags like the live viewer (`?labels=fit`). */
+  labels?: "fit";
 }
 
 export interface TeraPage {
@@ -153,6 +155,7 @@ export async function openTera(opts: OpenOptions = {}): Promise<TeraPage> {
 
     const q = new URLSearchParams({ mode, renderer: opts.renderer ?? "auto" });
     if (mode === "live" && opts.worldDir) q.set("world", "/world/world.json");
+    if (opts.labels === "fit") q.set("labels", "fit");
     const url = `${origin}/?${q}`;
     await page.goto(url);
     await page.waitForFunction(() => !!window.tera, undefined, { timeout: timeoutMs }).catch(() => {

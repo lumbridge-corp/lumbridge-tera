@@ -5,7 +5,8 @@
 // makes seek(t) exact and cheap: worldAt(base, events, t) is the JSON at time t, and
 // only entities whose JSON changed get rebuilt.
 import { Entity as EntitySchema, Environment as EnvSchema, Op as OpSchema, Sky as SkySchema } from "../schema/index.ts";
-import type { Entity, Op, WorldPack } from "../schema/index.ts";
+import type { Entity, Op, Sky, WorldPack } from "../schema/index.ts";
+import { parseRealTime } from "./astro.ts";
 import { deepMerge, type Plain } from "./merge.ts";
 import { applyLivingOp } from "../schema/living.ts";
 import { lerpTransform, progress } from "./ease.ts";
@@ -115,7 +116,14 @@ export function applyOp(world: WorldPack, rawOp: Op, clock?: OpClock): void {
       const base = op.set.mode !== undefined && op.set.mode !== cur.mode ? {} : cur;
       const res = SkySchema.safeParse(deepMerge(base, op.set as Plain));
       if (!res.success) throw new Error(`sky: ${zodMessage(res.error)}`);
-      world.sky = res.data;
+      const next = res.data;
+      // an animated time change: the sky time eases from the old time to the new one
+      if (op.duration && clock && "time" in op.set && (next.mode === "real" || next.mode === "sun") && (cur.mode === "real" || cur.mode === "sun") && base === cur) {
+        const u = progress(clock.now, clock.at, op.duration, op.ease ?? "inOutCubic");
+        const from = skyTimeMs(cur as Sky), to = skyTimeMs(next);
+        if (from !== null && to !== null && u < 1) next.time = new Date(from + (to - from) * u).toISOString();
+      }
+      world.sky = next;
       return;
     }
     case "env": {
@@ -135,6 +143,16 @@ export function applyOp(world: WorldPack, rawOp: Op, clock?: OpClock): void {
     case "graph":
       applyLivingOp(world, op);
       return;
+  }
+}
+
+/** A sun/real sky's time in ms (null for "now", a missing time or another mode). */
+export function skyTimeMs(sky: Sky | undefined): number | null {
+  if (!sky || (sky.mode !== "real" && sky.mode !== "sun") || !sky.time || sky.time === "now") return null;
+  try {
+    return parseRealTime(sky.time, sky.lon, 0);
+  } catch {
+    return null;
   }
 }
 

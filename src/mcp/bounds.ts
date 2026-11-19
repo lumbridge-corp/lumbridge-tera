@@ -5,12 +5,17 @@
 // Primitive size convention (matches the engine): box [w,h,d] (one number = cube),
 // sphere [radius], plane [w,d] lying flat in XZ, cylinder [radius,height] along Y,
 // torus [radius,tube] in the XY plane, cone [bottom radius,height] apex up (optional third
-// = top radius, a frustum), capsule [radius,total height]. Every primitive is centred on its
-// position. Partial arcs keep the full-sweep box (conservative).
+// = top radius, a frustum), capsule [radius,total height], prism [w,h,d]; every one centred on
+// its position. segment = a cylinder from `from` to `to` (radius `radius`). Partial arcs are
+// measured as the swept sector (an arc is not a full circle); repeats are measured copy by copy
+// (grid, radial, skip, jitter reach). `partBounds()` is the helper for footprint checks (town
+// assemble): the same boxes plus a size estimate for text.
 // When the engine page is running, the session overlays the engine's real boxes
 // (bridge bounds()) so models, splats and text get sizes too.
-import { repeatCount, type Entity, type Vec3 } from "../schema/index.ts";
-import { repeatDims, repeatSpan } from "../engine/repeat-math.ts";
+import { type Entity, type Vec3 } from "../schema/index.ts";
+import { radialAngles, repeatCellsOf, repeatDims } from "../engine/repeat-math.ts";
+
+const SEGMENT_RADIUS = 0.05; // = engine/primitives.ts (kept import-free of three.js)
 
 export interface Box { min: Vec3; max: Vec3 }
 type M = number[]; // 4x4 column-major like three.js
@@ -55,7 +60,10 @@ export function apply(m: M, v: Vec3): Vec3 {
   ];
 }
 
-export function primitiveHalfExtents(e: Extract<Entity, { kind: "primitive" }>): Vec3 {
+type Prim = Extract<Entity, { kind: "primitive" }>;
+
+/** Half extents of the full (un-cut) shape around its centre. Segments: see primitiveBox. */
+export function primitiveHalfExtents(e: Prim): Vec3 {
   const s = e.size ?? [];
   switch (e.shape) {
     case "box": return [(s[0] ?? 1) / 2, (s[1] ?? s[0] ?? 1) / 2, (s[2] ?? s[0] ?? 1) / 2];
@@ -65,16 +73,102 @@ export function primitiveHalfExtents(e: Extract<Entity, { kind: "primitive" }>):
     case "cone": { const r = Math.max(s[0] ?? 0.5, s[2] ?? 0); return [r, (s[1] ?? 1) / 2, r]; }
     case "torus": { const R = (s[0] ?? 1) + (s[1] ?? 0.3); return [R, R, s[1] ?? 0.3]; }
     case "capsule": { const r = s[0] ?? 0.25; return [r, Math.max((s[1] ?? 1) / 2, r), r]; }
+    case "prism": return [(s[0] ?? 1) / 2, (s[1] ?? s[0] ?? 1) / 2, (s[2] ?? s[0] ?? 1) / 2];
+    case "segment": { const b = primitiveBox(e); return [0, 1, 2].map((i) => (b.max[i]! - b.min[i]!) / 2) as Vec3; }
   }
 }
 
-function transformBox(m: M, h: Vec3): Box {
+/** Angles (deg) that bound a swept arc: both ends plus every quarter turn inside it. */
+function arcAngles(start: number, length: number): number[] {
+  const out = [start, start + length];
+  for (let q = Math.ceil(start / 90) * 90; q < start + length; q += 90) out.push(q);
+  return out;
+}
+function boxOf(points: Vec3[]): Box {
   const min: Vec3 = [Infinity, Infinity, Infinity], max: Vec3 = [-Infinity, -Infinity, -Infinity];
-  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
-    const p = apply(m, [sx * h[0], sy * h[1], sz * h[2]]);
-    for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i]!, p[i]!); max[i] = Math.max(max[i]!, p[i]!); }
-  }
+  for (const p of points) for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i]!, p[i]!); max[i] = Math.max(max[i]!, p[i]!); }
   return { min, max };
+}
+
+/** The primitive's own box in its local space (before its transform): arcs as swept sectors, segments between their points. */
+export function primitiveBox(e: Prim): Box {
+  const s = e.size ?? [];
+  if (e.shape === "segment") {
+    const a = e.from ?? [0, 0, 0], b = e.to ?? [0, 1, 0], r = e.radius ?? SEGMENT_RADIUS;
+    const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(d[0]!, d[1]!, d[2]!) || 1;
+    // A disc of radius r perpendicular to the axis reaches r·sqrt(1 − dᵢ²) along axis i.
+    const ext = d.map((v) => r * Math.sqrt(Math.max(0, 1 - (v / L) ** 2)));
+    return { min: [0, 1, 2].map((i) => Math.min(a[i]!, b[i]!) - ext[i]!) as Vec3, max: [0, 1, 2].map((i) => Math.max(a[i]!, b[i]!) + ext[i]!) as Vec3 };
+  }
+  const full = (): Box => { const h = primitiveHalfExtents(e); return { min: [-h[0], -h[1], -h[2]], max: h }; };
+  if (!e.arc || e.arc.length >= 360) return full();
+  const start = e.arc.start ?? 0, angles = arcAngles(start, e.arc.length);
+  if (e.shape === "cylinder" || e.shape === "cone") {
+    const h = (s[1] ?? 1) / 2;
+    const rings: [number, number][] = e.shape === "cylinder" ? [[s[0] ?? 0.5, -h], [s[2] ?? s[0] ?? 0.5, h]] : [[s[0] ?? 0.5, -h], [s[2] ?? 0, h]];
+    const pts: Vec3[] = [];
+    for (const [r, y] of rings) for (const t of angles) {
+      const a = (t * Math.PI) / 180;
+      pts.push([Math.sin(a) * r, y, Math.cos(a) * r]);
+      if (e.inner) pts.push([Math.sin(a) * Math.min(e.inner, r), y, Math.cos(a) * Math.min(e.inner, r)]);
+    }
+    if (!e.inner && !e.open) pts.push([0, -h, 0], [0, h, 0]); // pie-slice caps reach the axis
+    if (e.shape === "cone" && !(s[2] ?? 0)) pts.push([0, h, 0]); // apex
+    return boxOf(pts);
+  }
+  if (e.shape === "torus") {
+    const R = s[0] ?? 1, t = s[1] ?? 0.3;
+    const b = boxOf(angles.map((d) => { const a = (d * Math.PI) / 180; return [Math.cos(a) * R, Math.sin(a) * R, 0] as Vec3; }));
+    return { min: [b.min[0] - t, b.min[1] - t, -t], max: [b.max[0] + t, b.max[1] + t, t] };
+  }
+  return full();
+}
+
+function transformMinMax(m: M, b: Box): Box {
+  const pts: Vec3[] = [];
+  for (const x of [b.min[0], b.max[0]]) for (const y of [b.min[1], b.max[1]]) for (const z of [b.min[2], b.max[2]]) pts.push(apply(m, [x, y, z]));
+  return boxOf(pts);
+}
+
+/** Rough text box (sans, ~0.62 em per character, 1.2 em lines), centred like align "center". */
+function textBox(e: Extract<Entity, { kind: "text" }>): Box {
+  const size = e.size ?? 1, lines = e.text.split("\n");
+  const w = (size * 0.62 * Math.max(...lines.map((l) => l.length))) / 2, h = (size * 1.2 * lines.length) / 2;
+  return { min: [-w, -h, 0], max: [w, h, 0] };
+}
+
+/** Box of a repeat in its own space: the template's box placed at every copy (turn, skip, jitter reach). */
+function repeatBox(e: Extract<Entity, { kind: "repeat" }>, text: boolean): Box | null {
+  const t = text ? partBounds([e.of]) : sceneBounds([e.of], { rows: rows([e.of]) });
+  if (!t) return null;
+  const j = e.jitter;
+  const pad = j?.rotation || j?.scale ? Math.max(...t.max.map((v, i) => Math.abs(v - t.min[i]!))) * (0.5 * (j?.scale ?? 0) + (j?.rotation ? 0.3 : 0)) : 0;
+  let b: Box | null = null;
+  for (const c of repeatCellsOf(e)) {
+    const r = c.basis ?? [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    const m: M = [r[0]!, r[3]!, r[6]!, 0, r[1]!, r[4]!, r[7]!, 0, r[2]!, r[5]!, r[8]!, 0, c.position[0], c.position[1], c.position[2], 1];
+    b = union(b, transformMinMax(m, t));
+  }
+  if (b && pad) for (let i = 0; i < 3; i++) { b.min[i] = b.min[i]! - pad; b.max[i] = b.max[i]! + pad; }
+  return b;
+}
+
+/**
+ * World-space box of entities for footprint / height checks without a browser: primitives
+ * (arcs as sectors, segments, prisms), repeats copy by copy, groups, and an estimate for text.
+ * Models and splats are not measured. Returns null when nothing has a size.
+ */
+export function partBounds(entities: Entity[], parent: M = I): Box | null {
+  let b: Box | null = null;
+  for (const e of entities) {
+    if (e.visible === false) continue;
+    const m = mul(parent, compose(e));
+    if (e.kind === "primitive") b = union(b, transformMinMax(m, primitiveBox(e)));
+    else if (e.kind === "text") b = union(b, transformMinMax(m, textBox(e)));
+    else if (e.kind === "repeat") { const r = repeatBox(e, true); if (r) b = union(b, transformMinMax(m, r)); }
+    else if (e.kind === "group") b = union(b, partBounds(e.children, m));
+  }
+  return b;
 }
 
 export function union(a: Box | null, b: Box | null): Box | null {
@@ -105,8 +199,9 @@ export function rows(entities: Entity[], parent: M = I, parentId?: string, out: 
     let bounds: Box | null = null;
     let detail = "";
     if (e.kind === "primitive") {
-      bounds = transformBox(m, primitiveHalfExtents(e));
-      detail = `${e.shape}${e.size ? " " + JSON.stringify(e.size) : ""}${e.material?.color ? " " + e.material.color : ""}`;
+      bounds = transformMinMax(m, primitiveBox(e));
+      const shape = e.shape === "segment" ? `segment ${fmtV(e.from ?? [0, 0, 0])}→${fmtV(e.to ?? [0, 1, 0])} r ${fmt(e.radius ?? SEGMENT_RADIUS)}` : `${e.shape}${e.size ? " " + JSON.stringify(e.size) : ""}`;
+      detail = `${shape}${e.material?.color ? " " + e.material.color : ""}`;
     } else if (e.kind === "light") detail = `${e.light} ${e.intensity ?? 1}`;
     else if (e.kind === "model" || e.kind === "splat") detail = e.src;
     else if (e.kind === "actor") detail = `${e.style ?? "worker"}${e.label ? " " + JSON.stringify(e.label) : ""}${e.move ? ` move ${e.move.to ? "to " + e.move.to : "path " + e.move.path}` : ""} ${e.state ?? "idle"}`;
@@ -114,18 +209,17 @@ export function rows(entities: Entity[], parent: M = I, parentId?: string, out: 
     else if (e.kind === "meter") detail = `${e.style ?? "bar"} ${e.value}`;
     else if (e.kind === "text") detail = JSON.stringify(e.text.length > 30 ? e.text.slice(0, 30) + "…" : e.text);
     else if (e.kind === "repeat") {
-      // Template box (in the repeat's space) swept over the cell origins (+ jitter reach).
-      const [nx, ny, nz] = repeatDims(e.count);
-      detail = `${repeatCount(e.count)} × ${e.of.kind}${e.of.kind === "primitive" ? " " + e.of.shape : ""} (${nx}×${ny}×${nz}, step ${fmtV(e.step)})`;
-      const t = sceneBounds([e.of], { rows: rows([e.of]) });
-      if (t) {
-        const span = repeatSpan(e.count, e.step, e.jitter);
-        const pad = e.jitter?.rotation || e.jitter?.scale ? Math.max(...t.max.map((v, i) => Math.abs(v - t.min[i]!))) * (0.5 * (e.jitter?.scale ?? 0) + (e.jitter?.rotation ? 0.3 : 0)) : 0;
-        const lo: Vec3 = [0, 0, 0], hi: Vec3 = [0, 0, 0];
-        for (let i = 0; i < 3; i++) { lo[i] = t.min[i]! + span.min[i]! - pad; hi[i] = t.max[i]! + span.max[i]! + pad; }
-        const c: Vec3 = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
-        bounds = transformBox(mul(m, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, c[0], c[1], c[2], 1]), [(hi[0] - lo[0]) / 2, (hi[1] - lo[1]) / 2, (hi[2] - lo[2]) / 2]);
+      const n = repeatCellsOf(e).length;
+      const what = `${e.of.kind}${e.of.kind === "primitive" ? " " + e.of.shape : ""}`;
+      if (e.radial) {
+        const a = radialAngles(e.radial);
+        detail = `${n} × ${what} (radial ${e.radial.count} around ${e.radial.axis ?? "y"}, r ${fmt(e.radial.radius)}, ${fmt(a[0] ?? 0)}..${fmt(a[a.length - 1] ?? 0)} deg)`;
+      } else {
+        const [nx, ny, nz] = repeatDims(e.count ?? 1);
+        detail = `${n} × ${what} (${nx}×${ny}×${nz}, step ${fmtV(e.step ?? [0, 0, 0])})`;
       }
+      const r = repeatBox(e, false);
+      if (r) bounds = transformMinMax(m, r);
     }
     const row: Row = { id: e.id, kind: e.kind, detail, position, bounds, visible: e.visible ?? true };
     if (parentId) row.parent = parentId;

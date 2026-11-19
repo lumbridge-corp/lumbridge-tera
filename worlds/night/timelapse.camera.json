@@ -1,0 +1,21 @@
+{
+  "tera": "camera/v1",
+  "world": "night",
+  "fps": 30,
+  "width": 1280,
+  "height": 720,
+  "duration": 14,
+  "shots": [
+    { "id": "dusk", "start": 0, "end": 14, "kind": "keys", "path": "catmull", "ease": "inOutSine",
+      "keys": [
+        { "t": 0, "position": [-15, 1.8, 17], "target": [3, 8, -8], "fov": 60 },
+        { "t": 7, "position": [-13, 2.2, 15], "target": [3, 11, -8], "fov": 62 },
+        { "t": 14, "position": [-11, 2.6, 13], "target": [3, 15, -8], "fov": 66 }
+      ] }
+  ],
+  "events": [
+    { "t": 0, "ops": [ { "op": "sky", "set": { "time": "2026-11-18T15:45:00-08:00" } } ] },
+    { "t": 0.4, "ops": [ { "op": "sky", "set": { "time": "2026-11-18T19:15:00-08:00" }, "duration": 13.2, "ease": "inOutSine" } ] }
+  ],
+  "marks": [ { "t": 0, "label": "afternoon" }, { "t": 5.5, "label": "sunset" }, { "t": 9, "label": "blue hour" }, { "t": 13, "label": "night" } ]
+}

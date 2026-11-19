@@ -10,7 +10,8 @@ export const Op = z.discriminatedUnion("op", [
   z.object({ op: z.literal("add"), entity: Entity, parent: z.string().optional() }),
   z.object({ op: z.literal("update"), id: z.string(), set: z.record(z.string(), z.unknown()) }),
   z.object({ op: z.literal("remove"), id: z.string() }),
-  z.object({ op: z.literal("sky"), set: z.record(z.string(), z.unknown()) }),
+  // with `duration` (s) a real/sun sky's `time` change is animated (sky time eased from the old time to the new)
+  z.object({ op: z.literal("sky"), set: z.record(z.string(), z.unknown()), duration: z.number().positive().optional(), ease: Ease.optional() }),
   z.object({ op: z.literal("env"), set: z.record(z.string(), z.unknown()) }),
   z.object({
     op: z.literal("animate"),

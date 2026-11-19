@@ -3,6 +3,7 @@
 //   loading screen   title from world.title, a bar fed by real load progress, error + retry
 //   HUD              title, live dot, agent count, flow legend, views, idle orbit, screenshot,
 //                    fullscreen, VR/AR; light/dark aware; ?ui=0 hides all of it
+//   sky time         real skies: local time at the world's place, a 24 h scrubber, Now (docs/sky.md)
 //   camera           presets from world.cameras + plots, eased flights, keys 1–9, double-click
 //                    or double-tap to fly to a thing, idle auto-orbit after 60 s
 //   selection        click / tap a robot, building, machine or meter: a small card (world data only)
@@ -11,10 +12,10 @@
 // docs/viewer.md has the query flags and the performance policy.
 import "./viewer.css";
 import type { TeraBridge } from "../../bridge/types.ts";
-import type { WorldPack } from "../../schema/index.ts";
+import type { Op as WorldOp, WorldPack } from "../../schema/index.ts";
 import type { Engine } from "../engine.ts";
 import type { XrOptions } from "../xr.ts";
-import type { LiveStatus } from "../live.ts";
+import type { LiveStatus, ReplayPlayer } from "../live.ts";
 import { Flight, fitAspect, framePose, outwardDir, type Pose, type V3 } from "./flight.ts";
 import { LEVELS, QualityGovernor, initialLevel, levelIndex, pixelRatioAt } from "./quality.ts";
 import { buildPresets, countAgents, describe, legendOf, parseSavedView, resolveSelection, splitTitle, type Card, type Preset } from "./model.ts";
@@ -34,7 +35,27 @@ const ICON: Record<string, string> = {
   shrink: '<path d="M9 4v5H4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M15 20v-5h5"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   target: '<circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>',
+  moon: '<path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z"/>',
+  twilight: '<path d="M3 18h18"/><path d="M7 18a5 5 0 0 1 10 0"/><path d="M12 7.5v2M5.6 10.6l1.4 1.4M18.4 10.6 17 12"/>',
 };
+
+/** Local wall-clock parts of `ms` in `zone` (IANA), else a fixed offset of round(lon/15) hours. */
+export function localParts(ms: number, zone: string | undefined, lon: number): { minutes: number; seconds: number; label: string; date: string; zoneLabel: string } {
+  if (zone) {
+    try {
+      const f = new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "2-digit", minute: "2-digit", second: "2-digit", month: "short", day: "numeric", hourCycle: "h23", timeZoneName: "short" });
+      const p = Object.fromEntries(f.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+      const hh = Number(p.hour) % 24, mm = Number(p.minute), ss = Number(p.second);
+      return { minutes: hh * 60 + mm, seconds: ss, label: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`, date: `${p.month} ${p.day}`, zoneLabel: p.timeZoneName ?? zone };
+    } catch { /* unknown zone: fall through */ }
+  }
+  const off = Math.round(lon / 15);
+  const d = new Date(ms + off * 3600_000);
+  const hh = d.getUTCHours(), mm = d.getUTCMinutes();
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return { minutes: hh * 60 + mm, seconds: d.getUTCSeconds(), label: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`, date: `${months[d.getUTCMonth()]} ${d.getUTCDate()}`, zoneLabel: `UTC${off >= 0 ? "+" : "−"}${Math.abs(off)}` };
+}
 const icon = (name: string) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name]}</svg>`;
 
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, html = ""): HTMLElementTagNameMap[K] {
@@ -97,6 +118,13 @@ export class Viewer {
   private ui: boolean;
   private reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   private liveUrl: string | null;
+  /** `?replay=<url>`: a recorded live stream played in a loop (wins over ?live=). */
+  private replayUrl: string | null;
+  private replay: ReplayPlayer | null = null;
+  /** The fetched world, kept to reset a replay at its loop point. */
+  private baseWorld: WorldPack | null = null;
+  private skipSnapshot: unknown = null;
+  private fade: HTMLElement | null = null;
   private worldSrc: string;
 
   // state
@@ -130,7 +158,8 @@ export class Viewer {
     this.bridge = init.bridge;
     this.params = init.params;
     this.ui = init.params.get("ui") !== "0";
-    this.liveUrl = init.params.get("live");
+    this.replayUrl = init.params.get("replay");
+    this.liveUrl = this.replayUrl ? null : init.params.get("live");
     this.worldSrc = new URL(init.params.get("world") ?? "worlds/demo/world.json", location.href).href;
     const idleParam = Number(init.params.get("idle"));
     this.idleAfter = Number.isFinite(idleParam) && idleParam > 0 ? idleParam : 60;
@@ -158,6 +187,7 @@ export class Viewer {
     this.setupInput();
     e.onFrame((dt) => this.frame(dt));
     setInterval(() => this.updateCounts(), 1000);
+    setInterval(() => this.updateTime(), 500);
     if (!has3D()) {
       this.fail("3D isn’t available here", "Lumbridge Tera needs WebGPU or WebGL 2. Try a current Chrome, Edge, Safari or Firefox with hardware acceleration turned on.", () => location.reload());
       return;
@@ -169,12 +199,88 @@ export class Viewer {
   private open() {
     this.clearError();
     if (this.liveUrl) this.connect();
+    // a replay starts once its world is in (its first ops need the world), or right away
+    // when the recording carries its own snapshot (no ?world=)
+    if (this.replayUrl && !this.params.get("world")) {
+      this.status("Opening the replay", 0.06);
+      this.startReplay();
+      return;
+    }
     if (!this.liveUrl || this.params.get("world")) {
       this.status("Opening world", 0.02);
       fetchWorld(this.worldSrc, (f) => this.status("Opening world", 0.05 + 0.25 * f))
-        .then((w) => this.loadWorld(w, this.worldSrc))
+        .then((w) => {
+          if (this.replayUrl) this.baseWorld = structuredClone(w);
+          return this.loadWorld(w, this.worldSrc);
+        })
+        .then(() => {
+          if (this.replayUrl && this.firstLoaded && !this.replay) this.startReplay();
+        })
         .catch((err) => this.fail("Couldn’t open this world", (err as Error).message, () => this.open()));
     } else this.status("Connecting to the live town", 0.06);
+  }
+
+  /** `?replay=`: play the recording through the same handlers as the live feed. */
+  private startReplay() {
+    this.stopLive?.();
+    const base = this.params.get("world") ? this.worldSrc : new URL(this.replayUrl!, location.href).href;
+    let firstSnapshot: unknown = null;
+    void import("../live.ts").then(({ connectReplay, replaySpeed }) => {
+      this.stopLive = connectReplay(new URL(this.replayUrl!, location.href).href, {
+        ops: (ops) => this.applyTolerant(ops),
+        snapshot: (w) => {
+          if (w === this.skipSnapshot) return Promise.resolve((this.skipSnapshot = null));
+          return this.loadWorld(w, base);
+        },
+        status: (st, detail) => {
+          this.setLive(st);
+          if (st === "closed" && !this.firstLoaded) this.fail("Couldn’t open the replay", detail ?? "The recording isn’t available.", () => { this.clearError(); this.startReplay(); });
+        },
+        loaded: (r, player) => {
+          this.replay = player;
+          const f = r.frames[0];
+          if (f && f.t === 0 && f.msg.type === "snapshot") firstSnapshot = f.msg.world;
+        },
+        loop: () => this.replayLoop(firstSnapshot, base),
+      }, replaySpeed(this.params.get("replaySpeed")));
+    });
+  }
+
+  /** Apply ops like the live feed does, but skip (and log) an op that fails instead of dropping the rest. */
+  private async applyTolerant(ops: WorldOp[]): Promise<void> {
+    let rest = ops;
+    for (let guard = 0; rest.length && guard < 1000; guard++) {
+      const r = await this.bridge.apply(rest);
+      if (r.ok) return;
+      if (guard < 3) console.warn(`[tera replay] ${r.error}`);
+      rest = rest.slice(r.applied + 1);
+    }
+  }
+
+  /** The loop point: dip out, put the world back as it was at t = 0, dip in. */
+  private async replayLoop(firstSnapshot: unknown, base: string): Promise<void> {
+    const cut = this.params.get("replayLoop") === "cut" || this.reduced;
+    if (!cut) await this.dip(true);
+    if (firstSnapshot) {
+      await this.loadWorld(firstSnapshot as WorldPack, base);
+      this.skipSnapshot = firstSnapshot; // the t = 0 snapshot frame is already loaded
+    } else if (this.baseWorld) await this.loadWorld(structuredClone(this.baseWorld), this.worldSrc);
+    await nextFrame();
+    await nextFrame();
+    if (!cut) void this.dip(false);
+  }
+
+  private dip(out: boolean): Promise<void> {
+    if (!this.fade) {
+      this.fade = document.createElement("div");
+      this.fade.className = "tv-replay-fade";
+      Object.assign(this.fade.style, { position: "fixed", inset: "0", pointerEvents: "none", opacity: "0", transition: "opacity 0.6s ease", background: getComputedStyle(document.body).backgroundColor || "#f5f0e6", zIndex: "1" });
+      document.body.appendChild(this.fade);
+    }
+    const el = this.fade;
+    el.getBoundingClientRect();
+    el.style.opacity = out ? "1" : "0";
+    return new Promise((r) => setTimeout(r, 620));
   }
 
   private connect() {
@@ -477,6 +583,7 @@ export class Viewer {
     // Top bar: brand + live + agents (left), tools (right)
     const brand = h("div", { class: "tv-brand tv-panel" }, `
       <span class="tv-live" role="img" aria-label="Live feed" hidden></span>
+      <span class="tv-replay-word" hidden>replay</span>
       <span class="tv-title"><b></b><span class="tv-tag"></span></span>
       <span class="tv-agents" hidden><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="8" width="14" height="11" rx="5"/><path d="M12 4v4"/><circle cx="9.5" cy="13.5" r="0.6" fill="currentColor"/><circle cx="14.5" cy="13.5" r="0.6" fill="currentColor"/></svg><b></b><span class="tv-w"></span></span>`);
     const tools = h("nav", { class: "tv-tools tv-panel", "aria-label": "Viewer controls" });
@@ -507,11 +614,17 @@ export class Viewer {
     const card = h("section", { class: "tv-card tv-panel", "aria-label": "Selection", hidden: "" });
     const legend = h("div", { class: "tv-legend tv-panel", "aria-label": "Flow colours", hidden: "" });
     const toast = h("div", { id: "hud", class: "tv-toast", role: "status", "aria-live": "polite" });
-    root.append(top, presets, card, legend, toast, this.loader);
+    const time = h("div", { class: "tv-time tv-panel", role: "group", "aria-label": "Sky time", hidden: "" }, `
+      <span class="tv-time-icon" aria-hidden="true"></span>
+      <span class="tv-time-text"><b class="tv-time-clock">--:--</b><span class="tv-time-date"></span></span>
+      <input class="tv-time-range" type="range" min="0" max="1439" step="1" aria-label="Time of day at this place">
+      <button type="button" class="tv-time-now" aria-pressed="false" title="Follow the real time">Now</button>`);
+    root.append(top, time, presets, card, legend, toast, this.loader);
     document.body.appendChild(root);
     Object.assign(this.els, {
-      brand, presets, card, legend, toast,
+      brand, presets, card, legend, toast, time,
       live: brand.querySelector(".tv-live") as HTMLElement,
+      replayWord: brand.querySelector(".tv-replay-word") as HTMLElement,
       name: brand.querySelector(".tv-title b") as HTMLElement,
       tag: brand.querySelector(".tv-tag") as HTMLElement,
       agents: brand.querySelector(".tv-agents") as HTMLElement,
@@ -550,6 +663,58 @@ export class Viewer {
       else if (ev.key === "End") items[items.length - 1]?.focus();
     });
     this.setupXrButtons();
+    this.setupTime();
+  }
+
+  // ------------------------------------------------------------------ sky time (real skies)
+
+  private timeDrag = false;
+
+  private setupTime() {
+    const el = this.els.time!;
+    const range = el.querySelector<HTMLInputElement>(".tv-time-range")!;
+    const now = el.querySelector<HTMLButtonElement>(".tv-time-now")!;
+    const scrub = (done: boolean) => {
+      const st = this.engine.skyClockState();
+      if (!st) return;
+      const p = localParts(st.ms, st.timezone, st.lon);
+      const midnight = st.ms - (p.minutes * 60 + p.seconds) * 1000 - (st.ms % 1000);
+      this.engine.setSkyTime(midnight + Number(range.value) * 60_000, !done);
+      this.updateTime();
+    };
+    range.addEventListener("input", () => { this.timeDrag = true; scrub(false); });
+    range.addEventListener("change", () => { this.timeDrag = false; scrub(true); });
+    now.addEventListener("click", () => {
+      this.engine.skyNow();
+      this.updateTime();
+      this.toast("Following the real time");
+    });
+  }
+
+  private updateTime() {
+    if (!this.ui) return;
+    const el = this.els.time;
+    if (!el) return;
+    const st = this.engine.skyClockState();
+    el.hidden = !st || !this.firstLoaded;
+    if (!st) return;
+    const p = localParts(st.ms, st.timezone, st.lon);
+    const info = this.engine.skyInfo();
+    const mode = info.isNight ? "moon" : (info.sunElevation ?? 90) < 6 ? "twilight" : "sun";
+    const iconEl = el.querySelector<HTMLElement>(".tv-time-icon")!;
+    if (iconEl.dataset.mode !== mode) {
+      iconEl.dataset.mode = mode;
+      iconEl.innerHTML = icon(mode);
+    }
+    el.querySelector(".tv-time-clock")!.textContent = p.label;
+    const rate = st.rate === 1 ? "" : ` · ×${Math.abs(st.rate) >= 100 ? Math.round(st.rate) : +st.rate.toFixed(1)}`;
+    el.querySelector(".tv-time-date")!.textContent = `${p.date}${rate}`;
+    el.title = `${p.label} ${p.zoneLabel}, ${p.date} at ${st.lat.toFixed(2)}, ${st.lon.toFixed(2)} · ${info.phase ?? ""}`;
+    const range = el.querySelector<HTMLInputElement>(".tv-time-range")!;
+    if (!this.timeDrag) range.value = String(p.minutes);
+    range.setAttribute("aria-valuetext", `${p.label} ${p.zoneLabel}`);
+    const now = el.querySelector<HTMLButtonElement>(".tv-time-now")!;
+    now.setAttribute("aria-pressed", String(st.following));
   }
 
   private setupXrButtons() {
@@ -627,10 +792,11 @@ export class Viewer {
     if (!this.ui) return;
     const dot = this.els.live!;
     dot.hidden = false;
-    const word = st === "open" ? "live" : st === "connecting" ? (this.firstLoaded ? "reconnecting" : "connecting") : "offline";
+    const word = st === "open" ? "live" : st === "replay" ? "replay" : st === "connecting" ? (this.firstLoaded ? "reconnecting" : "connecting") : "offline";
     dot.dataset.status = st;
     dot.title = word;
-    dot.setAttribute("aria-label", `Live feed: ${word}`);
+    dot.setAttribute("aria-label", st === "replay" ? "Replay of a recording" : `Live feed: ${word}`);
+    this.els.replayWord!.hidden = st !== "replay";
   }
 
   private updateCounts() {
@@ -638,7 +804,7 @@ export class Viewer {
     const w = this.engine.shown();
     const n = w ? countAgents(w) : 0;
     const el = this.els.agents!;
-    el.hidden = n === 0 && !this.liveUrl;
+    el.hidden = n === 0 && !this.liveUrl && !this.replayUrl;
     const words = `${n} ${n === 1 ? "agent" : "agents"}`;
     el.querySelector("b")!.textContent = String(n);
     el.querySelector(".tv-w")!.textContent = n === 1 ? " agent" : " agents";
@@ -767,7 +933,7 @@ export class Viewer {
 
   /** For tests and devtools. */
   state() {
-    return { firstLoaded: this.firstLoaded, level: LEVELS[this.level]!.name, presets: this.presets.map((p) => p.id), selected: this.selected, flying: !!this.flight, orbiting: this.orbiting, live: this.liveStatus };
+    return { sky: this.engine.skyClockState(), firstLoaded: this.firstLoaded, level: LEVELS[this.level]!.name, presets: this.presets.map((p) => p.id), selected: this.selected, flying: !!this.flight, orbiting: this.orbiting, live: this.liveStatus, replay: this.replay ? { t: this.replay.t, loops: this.replay.loops, duration: this.replay.replay.duration, speed: this.replay.speed } : null };
   }
 }
 

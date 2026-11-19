@@ -6,10 +6,13 @@
 //   ?xr=vr|ar                    live mode: WebXR button (Quest 3 VR / passthrough AR, Snap Spectacles AR); docs/xr.md
 //     &xrsize=<m> &xrwalk=<k> &xrstart=table|walk   tabletop size, walk scale, starting scale
 //   ?live=ws://host:port         live feed (live.ts, CONTRACT.md section 9): snapshots + ops as they happen
+//   ?replay=<url.jsonl>          a recorded live stream in a loop, no server (CONTRACT.md 9a)
+//     &replaySpeed=<x> &replayLoop=cut
 //   ?ui=0                        live mode: no viewer UI at all (kiosks, embeds)
 //   ?quality=auto|high|medium|low|lower|lowest   live mode: adaptive (default) or a pinned level
 //   ?idle=<s>                    live mode: seconds without input before the idle orbit (default 60)
 //   ?labels=fit                  render mode: fit actor name tags to the screen like live mode does
+//   ?time=<ISO|now> &timeScale=<x>   live mode: real-sky time override and speed (docs/sky.md)
 import type { TeraBridge } from "../bridge/types.ts";
 import { Engine, type RendererPref } from "./engine.ts";
 import type { XrOptions } from "./xr.ts";
@@ -26,7 +29,13 @@ const xr: XrOptions | undefined =
     ? { mode: xrParam, tableSize: num("xrsize"), walkScale: num("xrwalk"), start: params.get("xrstart") === "walk" ? "walk" : params.get("xrstart") === "table" ? "table" : undefined }
     : undefined;
 
-const engine = new Engine(document.body, renderMode, pref, { xr, labelFit: renderMode ? params.get("labels") === "fit" : true });
+const timeScale = Number(params.get("timeScale"));
+const engine = new Engine(document.body, renderMode, pref, {
+  xr,
+  labelFit: renderMode ? params.get("labels") === "fit" : true,
+  skyTime: renderMode ? undefined : params.get("time") ?? undefined,
+  skyTimeScale: !renderMode && params.get("timeScale") !== null && Number.isFinite(timeScale) ? Math.max(-100000, Math.min(100000, timeScale)) : undefined,
+});
 
 /** Bridge calls run one at a time, in order, so a seek never interleaves with an apply. */
 let chain: Promise<unknown> = Promise.resolve();

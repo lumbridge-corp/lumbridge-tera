@@ -16,6 +16,7 @@ checkout and compares frame hashes of the demo, showcase and living worlds on bo
 | Idle orbit | After 60 s without input (`?idle=<s>`) the camera turns slowly (≈ 200 s per turn) until the next input. Toggle in the HUD (remembered). Off and disabled with `prefers-reduced-motion`. |
 | Selection card | Click / tap: the nearest actor, meter or flow, else the nearest group tagged `plot`/`building`/`machine`/`hero`, else the nearest tagged group. Shows the label or a readable id, the kind, an actor's `state` and where it is heading (`move.to`), a meter's value, the meters inside a machine, tags. World JSON only, no network. Refreshes twice a second as the feed changes things. Esc closes. |
 | Name tags | Actor labels never draw taller than 22 CSS px however close the camera comes, fade out below ~10 px (too small to read) and right at the camera (< 0.9–2.4 m). They were already depth tested, so buildings hide them. Pure function of the camera, so it is deterministic; render mode keeps world-size tags unless `?labels=fit`. |
+| Sky time | Real skies only (`sky.mode: "real"`): a small panel under the title with the local time at the world's place (`sky.timezone`, else a fixed offset from the longitude), a sun / twilight / moon icon, a 24 h scrubber (drag to any time of that day; the clock keeps running from there) and **Now** (follow the wall clock again; lit while following). The rate shows as ×n when `?timeScale=` or `sky.timeScale` is not 1. docs/sky.md. |
 | Accessibility | Every control is a real button with an `aria-label`; the views menu works with arrow keys / Home / End / Esc; focus rings; the loader is a live region with a progressbar; reduced motion shortens flights to 0.3 s and turns off auto-orbit and UI transitions. |
 
 ## Query flags (live mode)
@@ -25,7 +26,9 @@ checkout and compares frame hashes of the demo, showcase and living worlds on bo
 | `?ui=0` | no viewer UI at all (kiosks, embeds); the world, adaptive quality and idle orbit still run |
 | `?quality=auto` (default) `high` `medium` `low` `lower` `lowest` | adaptive, or a pinned level |
 | `?idle=<seconds>` | idle-orbit delay (default 60) |
-| `?labels=fit` | render mode only: fit name tags like the live viewer does |
+| `?labels=fit` | render mode only: fit name tags like the live viewer does (`tera render --labels fit`) |
+| `?time=<ISO\|now>` `&timeScale=<x>` | a real sky's clock: start time and sky seconds per second (e.g. `600` = ten minutes a second) |
+| `?replay=<url>` `&replaySpeed=<x>` `&replayLoop=cut` | play a recorded live stream in a loop, no server (CONTRACT.md 9a); the HUD dot says "replay" |
 
 Unchanged: `?world=`, `?live=`, `?renderer=`, `?xr=` (CONTRACT.md section 4).
 

@@ -112,6 +112,8 @@
 .tv-live { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 3px rgba(242, 169, 59, 0.2); transition: background 0.3s; }
 .tv-live[data-status="open"] { background: var(--lime); box-shadow: 0 0 0 3px var(--lime-soft); animation: tv-pulse 2.4s ease-in-out infinite; }
 .tv-live[data-status="closed"] { background: var(--red); box-shadow: 0 0 0 3px rgba(229, 83, 61, 0.18); }
+.tv-live[data-status="replay"] { background: var(--ink-3); box-shadow: 0 0 0 3px var(--line); }
+.tv-replay-word { flex: none; margin-left: -4px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); }
 @keyframes tv-pulse { 50% { box-shadow: 0 0 0 5px rgba(184, 255, 60, 0.08); } }
 .tv-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; }
 .tv-title b { font-weight: 650; letter-spacing: -0.01em; font-size: 14px; }
@@ -135,6 +137,31 @@
 .tv-icon-label { font-weight: 600; font-size: 13px; color: var(--ink); }
 .tv-text { padding: 0 8px; font-weight: 650; font-size: 12px; letter-spacing: 0.04em; }
 .tv :focus-visible { outline: 2px solid var(--lime-ink); outline-offset: 2px; }
+
+/* ---------------------------------------------------------------- sky time (real skies) */
+.tv-time {
+  position: absolute;
+  top: calc(max(var(--gutter), env(safe-area-inset-top)) + 48px);
+  left: max(var(--gutter), env(safe-area-inset-left));
+  display: flex; align-items: center; gap: 9px; height: 36px; padding: 0 4px 0 11px;
+  max-width: calc(100vw - 2 * var(--gutter));
+  opacity: 0; transition: opacity 0.5s ease 0.25s;
+}
+.tv-ready .tv-time { opacity: 1; }
+.tv-time-icon { display: inline-grid; place-items: center; color: var(--amber); }
+.tv-time-icon[data-mode="moon"] { color: #8fb0ff; }
+.tv-time-icon[data-mode="twilight"] { color: #f08a5d; }
+.tv-time-icon svg { width: 16px; height: 16px; }
+.tv-time-text { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tv-time-clock { font-weight: 650; font-size: 14px; letter-spacing: -0.01em; }
+.tv-time-date { color: var(--ink-3); font-size: 12px; }
+.tv-time-range { width: 132px; height: 20px; margin: 0; accent-color: var(--lime-ink); cursor: pointer; background: transparent; }
+.tv-time-now {
+  height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: transparent;
+  font-weight: 600; font-size: 12px; cursor: pointer; color: var(--ink-2);
+}
+.tv-time-now:hover { background: var(--hover); color: var(--ink); }
+.tv-time-now[aria-pressed="true"] { color: var(--lime-ink); background: var(--lime-soft); border-color: transparent; }
 
 /* ---------------------------------------------------------------- preset picker */
 .tv-presets {
@@ -243,6 +270,9 @@
   .tv-legend { flex-wrap: nowrap; gap: 10px; padding: 6px 11px; font-size: 11.5px; }
   /* the card takes the bottom of a phone screen; the legend steps aside while it is open */
   .tv-card:not([hidden]) ~ .tv-legend { display: none; }
+  .tv-time { gap: 7px; padding-left: 9px; }
+  .tv-time-range { width: 96px; }
+  .tv-time-date { display: none; }
 }
 @media (max-width: 400px) {
   .tv-tools .tv-icon { min-width: 32px; }

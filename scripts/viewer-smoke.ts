@@ -156,6 +156,27 @@ await step("360 px: no horizontal overflow, panels inside the screen", async () 
   await p.context().close();
 });
 
+await step("?replay= plays a recording in a loop: replay dot, ops applied, bad lines skipped", async () => {
+  const p = await open("&replay=/world/replay.jsonl&replaySpeed=4");
+  await ready(p);
+  await p.waitForFunction(() => (window as any).teraViewer.state().live === "replay", undefined, { timeout: 10_000 });
+  assert.equal(await p.getAttribute(".tv-live", "data-status"), "replay");
+  assert.equal(await p.isVisible(".tv-replay-word"), true);
+  // the robot from the recording is in the world; a failing op does not drop the rest
+  await p.waitForFunction(() => (window as any).teraEngine.get().entities.some((e: any) => e.id === "live-r1"), undefined, { timeout: 5000 });
+  // t = 2 has a failing op first: the meter update after it still lands
+  await p.waitForFunction(() => {
+    const find = (es: any[]): any => es.map((e) => (e.id === "depot-load" ? e : find(e.children ?? []))).find(Boolean);
+    return find((window as any).teraEngine.get().entities)?.value === 0.8;
+  }, undefined, { timeout: 8000, polling: 50 });
+  // 4 s at x4 = a loop per second (+ the 1.2 s dip): wait for two loops
+  await p.waitForFunction(() => (window as any).teraViewer.state().replay?.loops >= 2, undefined, { timeout: 15_000 });
+  const s = await state(p);
+  assert.equal(s.replay.duration, 4);
+  assert.equal(s.replay.speed, 4);
+  await p.context().close();
+});
+
 await step("a missing world shows an error with Try again", async () => {
   const ctx = await browser.newContext({ viewport: { width: 800, height: 500 } });
   const p = await ctx.newPage();

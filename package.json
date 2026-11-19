@@ -1,6 +1,6 @@
 {
   "name": "@lumbridge/tera",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Lumbridge Tera: a three.js world engine that agents drive — MCP tools, camera scripts, splats, frame-exact video.",
   "license": "Apache-2.0",
   "repository": {
@@ -25,12 +25,14 @@
     "eval:mcp": "node scripts/mcp-eval.ts",
     "smoke:xr": "node scripts/xr-smoke.ts",
     "smoke:viewer": "node scripts/viewer-smoke.ts",
-    "parity:render": "node scripts/render-parity.ts"
+    "parity:render": "node scripts/render-parity.ts",
+    "smoke:sky": "node scripts/sky-smoke.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@sparkjsdev/spark": "2.4.0",
     "playwright-core": "^1.65.1",
+    "satellite.js": "7.2.0",
     "three": "0.187.0",
     "zod": "^3.25.0"
   },

@@ -7,6 +7,21 @@ import type { WorldPack } from "../schema/index.ts";
 import { parseSkyTime, sunDirection, sunPosition } from "./solar.ts";
 import { Backdrop, exactColor } from "./backdrop.ts";
 import { DEFAULT_SKY, gradientImage, hexToLinear, skyState, sunLight, sunSkyImage, type SkyParams } from "./skyModel.ts";
+import type { RealSkyRig, SkyInfo } from "./realSky.ts";
+import { nightness, NIGHT_RAMP, parseRealTime } from "./astro.ts";
+
+/** What the engine passes the sky each frame (real skies only use it). */
+export interface SkyFrame {
+  /** Sky time in ms (UTC), already including script time / the live clock. */
+  ms: number;
+  viewportH: number;
+  /** Seconds of page time (twinkle). */
+  wall: number;
+  /** Render mode: finish everything this frame. */
+  sync: boolean;
+  /** Live: time running fast or being scrubbed. */
+  fast: boolean;
+}
 
 const SKY_W = 1024, SKY_H = 512;
 /** Sun intensity at noon (three physical units, lux-ish). */
@@ -60,6 +75,14 @@ export class SkyRig {
   warnings: string[] = [];
   /** Atmosphere parameters for the sun sky. */
   params: SkyParams = { ...DEFAULT_SKY };
+  /** The real sky (mode "real"), created on first use. */
+  real: RealSkyRig | null = null;
+  private realOn = false;
+  /** Day/night state of a sun sky (mode "sun"): its nightness, for night lights. */
+  private sunInfo: SkyInfo = { mode: "color", nightness: 0, isNight: false, sunElevation: null, sunAzimuth: null };
+  /** Hooks into the engine (asset tracking for the real sky's async loads). */
+  track: <T>(p: Promise<T>) => Promise<T> = (p) => p;
+  live = false;
 
   constructor(private scene: THREE.Scene) {
     this.sun.name = "__sun";
@@ -103,7 +126,48 @@ export class SkyRig {
     } else this.scene.fog = null;
 
     // Sun and colour skies blend into the fog at the horizon, so they depend on the fog colour too.
+    const ramp = env.nightLights?.ramp ?? NIGHT_RAMP;
+    if (sky.mode === "real") {
+      // time is not structural: it arrives every frame (SkyFrame.ms)
+      const { time: _t, timeScale: _s, timezone: _z, ...rest } = sky;
+      const key = JSON.stringify({ real: rest, fog: fog?.color, ramp });
+      if (key === this.skyKey) return;
+      this.skyKey = key;
+      this.setSunEnabled(false);
+      this.setBackdrop(null, undefined, undefined);
+      this.realOn = true;
+      // loaded on demand: worlds without a real sky never download the catalogue code or SGP4
+      if (!this.real) {
+        const { RealSkyRig } = await this.track(import("./realSky.ts"));
+        if (this.skyKey !== key) return;
+        this.real ??= new RealSkyRig({
+        scene: this.scene,
+        sun: this.sun,
+        setTexture: (t) => this.setTexture(t, true),
+        setSunDir: (d) => this.sunDir.set(d[0], d[1], d[2]),
+        resolve,
+        track: (p) => this.track(p),
+      }, { live: this.live });
+      }
+      // the key light stays in the scene day and night (no shader recompiles at sunset)
+      for (const o of [this.sun, this.sunTarget]) if (!o.parent) this.scene.add(o);
+      this.real.warnings = [];
+      await this.real.configure(sky, fog?.color, ramp);
+      this.warnings.push(...this.real.warnings);
+      return;
+    }
+    if (this.realOn) {
+      this.realOn = false;
+      this.real?.detach();
+      for (const o of [this.sun, this.sunTarget]) o.removeFromParent();
+      this.sun.intensity = 0;
+    }
     const key = JSON.stringify(sky.mode === "sun" ? { sky, params: this.params, fog: fog?.color } : sky.mode === "color" ? { sky, fog: fog?.color, exact } : sky);
+    if (sky.mode === "sun") {
+      const el = sunPosition(parseSkyTime(sky.time, sky.lon), sky.lat, sky.lon).elevation;
+      const n = nightness(el, ramp);
+      this.sunInfo = { mode: "sun", nightness: n, isNight: n >= 0.5, sunElevation: el, sunAzimuth: null, time: new Date(parseRealTime(sky.time, sky.lon, 0)).toISOString() };
+    } else this.sunInfo = { mode: sky.mode, nightness: 0, isNight: false, sunElevation: null, sunAzimuth: null };
     if (key === this.skyKey) return;
     this.skyKey = key;
     this.setSunEnabled(false);
@@ -186,9 +250,21 @@ export class SkyRig {
     }
   }
 
-  /** Per frame: keep the disc on the sky dome around the camera. */
-  update(camera: THREE.PerspectiveCamera) {
+  /** True while a real sky is active. */
+  get isReal() { return this.realOn; }
+
+  /** Day/night state for night lights, the bridge and the tera:sky event. */
+  get info(): SkyInfo {
+    return this.realOn && this.real ? this.real.info : this.sunInfo;
+  }
+
+  /** Per frame: keep the disc on the sky dome around the camera; a real sky follows `frame.ms`. */
+  update(camera: THREE.PerspectiveCamera, frame?: SkyFrame) {
     if (this.backdrop.mesh.parent) this.backdrop.follow(camera);
+    if (this.realOn && this.real && frame) {
+      this.real.update(frame.ms, camera, frame.viewportH, frame.wall, frame.sync, frame.fast);
+      return;
+    }
     if (!this.sunOn) return;
     const p = camera.position.clone().addScaledVector(this.sunDir, SUN_DISTANCE);
     this.disc.position.copy(p);

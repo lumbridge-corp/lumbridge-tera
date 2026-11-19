@@ -30,6 +30,8 @@ export interface RenderOptions {
   workers?: number;
   /** Skip the audio track even if the script has one. */
   noAudio?: boolean;
+  /** "fit": name tags sized like the live viewer (`?labels=fit`, still deterministic). */
+  labels?: "fit";
   onProgress?: (p: { frame: number; done: number; total: number; fps: number; etaS: number }) => void;
   onWarning?: (msg: string) => void;
 }
@@ -140,7 +142,7 @@ export async function render(opts: RenderOptions): Promise<RenderResult> {
   const ff = startFfmpeg(ffmpegArgs({ fps, out: opts.out, crf: opts.crf, preset: opts.preset, frames: n, audio }));
   try {
     for (let w = 0; w < workers; w++) {
-      const p = await openTera({ worldDir: opts.worldDir, width: script.width, height: script.height, renderer: opts.renderer, timeoutMs });
+      const p = await openTera({ worldDir: opts.worldDir, width: script.width, height: script.height, renderer: opts.renderer, timeoutMs, labels: opts.labels });
       await p.bridge.loadScript(script);
       pages.push(p);
     }

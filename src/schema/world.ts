@@ -26,6 +26,12 @@ export const Material = z.object({
   glowExact: z.boolean().optional(),
   /** Clear glass: see-through (interiors keep their contrast), slight tint from `color`, sky reflections + fresnel rim; `roughness` frosts it; `opacity` is ignored. */
   glass: z.boolean().optional(),
+  /**
+   * Night look (with a real or sun sky): as the sun goes down (environment.nightLights.ramp,
+   * default +2° → −6°) the emissive fades from its day value to `emissive` (default the
+   * material's emissive, else its colour) at `intensity` (default 1.5): windows that glow at night.
+   */
+  night: z.object({ emissive: Color.optional(), intensity: z.number().min(0).max(50).optional() }).optional(),
 });
 
 /** Partial sweep in degrees around the shape's axis. Cylinder/cone/capsule: around Y, 0 = +Z, 90 = +X. Torus: in its XY plane, 0 = +X, 90 = +Y. */
@@ -44,7 +50,7 @@ const base = {
 export const PrimitiveEntity = z.object({
   ...base,
   kind: z.literal("primitive"),
-  shape: z.enum(["box", "sphere", "plane", "cylinder", "torus", "cone", "capsule"]),
+  shape: z.enum(["box", "sphere", "plane", "cylinder", "torus", "cone", "capsule", "segment", "prism"]),
   size: z.array(z.number().positive()).optional(),
   material: Material.optional(),
   /** cylinder / cone / torus: only part of the sweep (arches, vaults, half-pipes). */
@@ -53,8 +59,11 @@ export const PrimitiveEntity = z.object({
   open: z.boolean().optional(),
   /** cylinder: hollow with this inner radius (m), solid walls and end faces (thick arches, rings, pipes). */
   inner: z.number().positive().optional(),
-  /** box: rounded edges with this radius (m). */
+  /** box: rounded edges with this radius (m). segment: the tube radius (m, default 0.05). */
   radius: z.number().positive().optional(),
+  /** segment: the two end points (m, in the entity's own space): a cylinder from `from` to `to`. */
+  from: Vec3.optional(),
+  to: Vec3.optional(),
 });
 export const ModelEntity = z.object({ ...base, kind: z.literal("model"), src: z.string(), animation: z.string().optional() });
 export const SplatEntity = z.object({ ...base, kind: z.literal("splat"), src: z.string() });
@@ -79,6 +88,10 @@ export const LightEntity = z.object({
   distance: z.number().min(0).optional(),
   /** point / spot: falloff exponent (2 = physical inverse square, the default; 0 = no falloff). */
   decay: z.number().min(0).optional(),
+  /** Only at night: the intensity fades in as the sun goes down (environment.nightLights.ramp). Streetlights, lamps. */
+  night: z.boolean().optional(),
+  /** Only by day: the intensity fades out as the sun goes down (fill lights authored for daylight). */
+  day: z.boolean().optional(),
 });
 
 export const ActorEntity = z.object({ ...base, ...ActorFields });
@@ -94,6 +107,26 @@ export const RepeatJitter = z.object({
   color: z.number().min(0).max(1).optional(), // 0..1 hue/lightness variation
 });
 export type RepeatJitter = z.infer<typeof RepeatJitter>;
+
+/**
+ * Radial layout for `repeat` (instead of count/step): `count` copies on a circle of `radius` around
+ * `axis` (default "y"), each turned with its angle so its local +Z points away from the axis and its
+ * local +Y runs along it. Angles: around y 0 = +Z, 90 = +X (as cylinder arcs); around z 0 = +X,
+ * 90 = +Y (as torus arcs); around x 0 = +Y, 90 = +Z. A full circle (lengthDeg 360, the default)
+ * spaces copies evenly; a partial one puts the first copy at startDeg and the last at
+ * startDeg + lengthDeg.
+ */
+export const RepeatRadial = z.object({
+  count: z.number().int().min(1),
+  radius: z.number().min(0),
+  axis: z.enum(["x", "y", "z"]).optional(),
+  startDeg: z.number().optional(),
+  lengthDeg: z.number().gt(0).max(360).optional(),
+});
+export type RepeatRadial = z.infer<typeof RepeatRadial>;
+/** Cells left empty: [i, j, k] (grid) or a copy index (radial, or i of a single row). */
+export const RepeatSkip = z.array(z.union([z.number().int().min(0), z.tuple([z.number().int().min(0), z.number().int().min(0), z.number().int().min(0)])]));
+export type RepeatSkip = z.infer<typeof RepeatSkip>;
 
 /** Kinds a repeat may copy (static geometry). */
 export const REPEATABLE = ["primitive", "model", "text", "group", "repeat"] as const;
@@ -112,24 +145,31 @@ export type Entity =
   | (z.infer<z.ZodObject<typeof base>> & {
       kind: "repeat";
       of: Entity;
-      count: [number, number, number] | number;
-      step: [number, number, number];
+      count?: [number, number, number] | number;
+      step?: [number, number, number];
+      radial?: RepeatRadial;
+      skip?: RepeatSkip;
       jitter?: RepeatJitter;
     });
 
-/** Copies in a repeat (product of count). */
-export function repeatCount(count: [number, number, number] | number): number {
-  return typeof count === "number" ? count : count[0] * count[1] * count[2];
+/** Copies in a grid repeat (product of count; no count = 1). */
+export function repeatCount(count: [number, number, number] | number | undefined): number {
+  return count === undefined ? 1 : typeof count === "number" ? count : count[0] * count[1] * count[2];
+}
+type RepeatLike = { of: Entity; count?: [number, number, number] | number; radial?: RepeatRadial };
+/** Cells in a repeat, grid or radial (skipped cells included: the limit counts the layout). */
+export function repeatCopies(e: Omit<RepeatLike, "of">): number {
+  return e.radial ? e.radial.count : repeatCount(e.count);
 }
 
-function repeatProblems(e: { of: Entity; count: [number, number, number] | number }, path: (string | number)[], ctx: z.RefinementCtx, mult = 1) {
-  const n = repeatCount(e.count) * mult;
+function repeatProblems(e: RepeatLike, path: (string | number)[], ctx: z.RefinementCtx, mult = 1) {
+  const n = repeatCopies(e) * mult;
   if (n > REPEAT_MAX) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...path, "count"], message: `${n} copies is over the limit of ${REPEAT_MAX}` });
   const visit = (x: Entity, p: (string | number)[], m: number) => {
     if (!(REPEATABLE as readonly string[]).includes(x.kind)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: p, message: `repeat cannot copy a ${x.kind} (allowed: ${REPEATABLE.join(", ")})` });
     if (x.kind === "group") x.children.forEach((c, i) => visit(c, [...p, "children", i], m));
     if (x.kind === "repeat") {
-      const k = repeatCount(x.count) * m;
+      const k = repeatCopies(x) * m;
       if (k > REPEAT_MAX) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...p, "count"], message: `${k} copies (nested) is over the limit of ${REPEAT_MAX}` });
       visit(x.of, [...p, "of"], k);
     }
@@ -153,17 +193,75 @@ export const Entity: z.ZodType<Entity> = z.lazy(() =>
         kind: z.literal("repeat"),
         // The copied entity; its id is only a label (copies are not separate entities).
         of: z.preprocess((v) => (v && typeof v === "object" && !Array.isArray(v) && !("id" in v) ? { ...v, id: "item" } : v), Entity),
-        count: z.union([z.number().int().min(1), z.tuple([z.number().int().min(1), z.number().int().min(1), z.number().int().min(1)])]),
-        step: Vec3,
+        // Grid layout: count + step. Radial layout: radial (instead of count/step).
+        count: z.union([z.number().int().min(1), z.tuple([z.number().int().min(1), z.number().int().min(1), z.number().int().min(1)])]).optional(),
+        step: Vec3.optional(),
+        radial: RepeatRadial.optional(),
+        skip: RepeatSkip.optional(),
         jitter: RepeatJitter.optional(),
       }),
   ]).superRefine((e, ctx) => {
-    if (e.kind === "repeat") repeatProblems(e as unknown as { of: Entity; count: [number, number, number] | number }, [], ctx);
+    if (e.kind === "repeat") {
+      const r = e as unknown as RepeatLike & { step?: Vec3 };
+      if (r.radial && (r.count !== undefined || r.step)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["radial"], message: "use either radial or count + step, not both" });
+      if (!r.radial && (r.count === undefined || !r.step)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: r.count === undefined ? ["count"] : ["step"], message: 'a repeat needs count + step (grid) or radial {"count","radius"}' });
+      repeatProblems(r, [], ctx);
+    }
+    if (e.kind === "primitive" && e.shape === "segment") {
+      if (!e.from || !e.to) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [e.from ? "to" : "from"], message: 'a segment needs "from" and "to" points ([x,y,z]) and an optional "radius"' });
+      else if (Math.hypot(e.to[0] - e.from[0], e.to[1] - e.from[1], e.to[2] - e.from[2]) < 1e-6) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["to"], message: "segment from and to are the same point" });
+    }
+    if (e.kind === "light" && e.night && e.day) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["day"], message: "a light is either night: true (on at night) or day: true (on by day), not both" });
+    if (e.kind === "primitive" && e.shape !== "segment" && (e.from || e.to)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [e.from ? "from" : "to"], message: `from/to belong to shape "segment", not "${e.shape}"` });
   }),
 ) as z.ZodType<Entity>;
 
+/** Satellites on the real sky: SGP4 from element sets (OMM JSON array or TLE text) at `src`. */
+export const SkySatellites = z.object({
+  /** URL or world-relative path of a Celestrak-style GP JSON array (OMM) or TLE text. Never fetched unless given. */
+  src: z.string().optional(),
+  /** Name filters: "starlink", "oneweb", "iss", "stations", "kuiper", "all" (default all). */
+  groups: z.array(z.string().min(1)).max(8).optional(),
+  /** Keep at most this many element sets (file order, after the group filter). Default 12000. */
+  max: z.number().int().positive().max(20000).optional(),
+  /** Degrees above the horizon below which satellites are not drawn. Default 0. */
+  minElevation: z.number().min(-2).max(80).optional(),
+  /** Default true: only what the eye could see (sunlit, dark sky). false: every object above the horizon, eclipsed ones faint blue. */
+  visibleOnly: z.boolean().optional(),
+});
+
+/**
+ * The real sky at a time and place: precise sun, moon with phase, ~9 000 catalogue stars, the
+ * planets, the Milky Way, satellites (SGP4), twilight and night. `time` ISO (no zone = local
+ * clock time at `lon`) or "now" (live mode follows the wall clock; render mode reads the clock
+ * once at load). In render mode the sky time is `time + script t · timeScale`.
+ */
+export const RealSky = z.object({
+  mode: z.literal("real"),
+  time: z.string().optional(),
+  lat: z.number().min(-90).max(90),
+  lon: z.number().min(-180).max(180),
+  /** IANA zone (e.g. "America/Los_Angeles") for the viewer's clock display only; the sky itself is computed in UTC. */
+  timezone: z.string().optional(),
+  /** Sky seconds per second of script (render) or page (live) time. Default 1; 600 = ten minutes a second. */
+  timeScale: z.number().min(-100000).max(100000).optional(),
+  /** The moon (default true); `scale` enlarges the disc (1 = true size, 0.52°). */
+  moon: z.union([z.boolean(), z.object({ scale: z.number().min(0.5).max(8).optional() })]).optional(),
+  /** Stars (default true): `magnitudeLimit` (default 6.5) and the Milky Way band (default true). */
+  stars: z.union([z.boolean(), z.object({ magnitudeLimit: z.number().min(-1).max(7).optional(), milkyWay: z.boolean().optional() })]).optional(),
+  /** Mercury, Venus, Mars, Jupiter, Saturn as points of light (default true). */
+  planets: z.boolean().optional(),
+  satellites: SkySatellites.optional(),
+  /** Warm city glow on the night horizon 0..1 (default 0.15); it also hides faint stars and the Milky Way. */
+  cityGlow: z.number().min(0).max(1).optional(),
+  /** Lift the exposure gently at night so a dark town still reads (default true). */
+  exposureAuto: z.boolean().optional(),
+});
+export type RealSky = z.infer<typeof RealSky>;
+
 export const Sky = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("sun"), time: z.string(), lat: z.number(), lon: z.number() }),
+  RealSky,
   z.object({ mode: z.literal("color"), color: Color }),
   z.object({ mode: z.literal("hdri"), src: z.string() }),
 ]);
@@ -220,6 +318,8 @@ export const Environment = z.object({
   exposure: z.number().positive().optional(),
   fog: z.object({ color: Color, near: z.number(), far: z.number() }).optional(),
   post: Post.optional(),
+  /** Night lights (material.night, light night/day): the sun-elevation ramp [day, night] in degrees, default [2, -6]. */
+  nightLights: z.object({ ramp: z.tuple([z.number().min(-30).max(30), z.number().min(-30).max(30)]).optional() }).optional(),
 });
 
 export const CameraPose = z.object({ position: Vec3, target: Vec3, fov: z.number().min(5).max(120).optional() });

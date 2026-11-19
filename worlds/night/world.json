@@ -1,0 +1,2361 @@
+{
+ "tera": "world/v1",
+ "id": "night",
+ "title": "Night — a plaza under the real sky of San Francisco",
+ "sky": {
+  "mode": "real",
+  "time": "2026-11-29T18:15:00-08:00",
+  "lat": 37.77,
+  "lon": -122.42,
+  "timezone": "America/Los_Angeles",
+  "satellites": {
+   "src": "assets/starlink.omm.json"
+  },
+  "cityGlow": 0.12,
+  "moon": {
+   "scale": 2
+  }
+ },
+ "environment": {
+  "exposure": 1,
+  "post": {
+   "bloom": {
+    "strength": 0.35,
+    "radius": 0.3
+   }
+  }
+ },
+ "entities": [
+  {
+   "id": "ground",
+   "kind": "primitive",
+   "shape": "plane",
+   "size": [
+    400,
+    400
+   ],
+   "material": {
+    "color": "#3b4236",
+    "roughness": 1
+   },
+   "tags": [
+    "ground"
+   ]
+  },
+  {
+   "id": "plaza",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    34,
+    0.1,
+    30
+   ],
+   "transform": {
+    "position": [
+     0,
+     0.05,
+     0
+    ]
+   },
+   "material": {
+    "color": "#a39d92",
+    "roughness": 0.9
+   }
+  },
+  {
+   "id": "street",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    120,
+    0.06,
+    9
+   ],
+   "transform": {
+    "position": [
+     0,
+     0.03,
+     19.5
+    ]
+   },
+   "material": {
+    "color": "#2b2d31",
+    "roughness": 0.95
+   }
+  },
+  {
+   "id": "bakery",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    10,
+    9,
+    8
+   ],
+   "transform": {
+    "position": [
+     -11,
+     4.5,
+     -14
+    ]
+   },
+   "material": {
+    "color": "#d9c7a8",
+    "roughness": 0.85
+   },
+   "tags": [
+    "building"
+   ]
+  },
+  {
+   "id": "bakery-roof",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    10.4,
+    0.3,
+    8.4
+   ],
+   "transform": {
+    "position": [
+     -11,
+     9.15,
+     -14
+    ]
+   },
+   "material": {
+    "color": "#4a4d52",
+    "roughness": 0.8
+   }
+  },
+  {
+   "id": "bakery-win-0",
+   "kind": "repeat",
+   "count": [
+    4,
+    1,
+    1
+   ],
+   "step": [
+    2.2,
+    0,
+    0
+   ],
+   "skip": [
+    [
+     2,
+     0,
+     0
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffcf8a",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     -14.3,
+     2.2,
+     -9.94
+    ]
+   }
+  },
+  {
+   "id": "bakery-win-1",
+   "kind": "repeat",
+   "count": [
+    4,
+    1,
+    1
+   ],
+   "step": [
+    2.2,
+    0,
+    0
+   ],
+   "skip": [
+    [
+     3,
+     0,
+     0
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffe2b0",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     -14.3,
+     5.2,
+     -9.94
+    ]
+   }
+  },
+  {
+   "id": "tower",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    9,
+    21,
+    9
+   ],
+   "transform": {
+    "position": [
+     1,
+     10.5,
+     -16
+    ]
+   },
+   "material": {
+    "color": "#c9ccd1",
+    "roughness": 0.85
+   },
+   "tags": [
+    "building"
+   ]
+  },
+  {
+   "id": "tower-roof",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    9.4,
+    0.3,
+    9.4
+   ],
+   "transform": {
+    "position": [
+     1,
+     21.15,
+     -16
+    ]
+   },
+   "material": {
+    "color": "#4a4d52",
+    "roughness": 0.8
+   }
+  },
+  {
+   "id": "tower-win-0",
+   "kind": "repeat",
+   "count": [
+    4,
+    1,
+    1
+   ],
+   "step": [
+    2.2,
+    0,
+    0
+   ],
+   "skip": [
+    [
+     0,
+     0,
+     0
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffcf8a",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     -2.3000000000000003,
+     2.2,
+     -11.44
+    ]
+   }
+  },
+  {
+   "id": "tower-win-1",
+   "kind": "repeat",
+   "count": [
+    4,
+    1,
+    1
+   ],
+   "step": [
+    2.2,
+    0,
+    0
+   ],
+   "skip": [
+    [
+     1,
+     0,
+     0
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffe2b0",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     -2.3000000000000003,
+     5.2,
+     -11.44
+    ]
+   }
+  },
+  {
+   "id": "tower-win-2",
+   "kind": "repeat",
+   "count": [
+    4,
+    1,
+    1
+   ],
+   "step": [
+    2.2,
+    0,
+    0
+   ],
+   "skip": [
+    [
+     2,
+     0,
+     0
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#fff1d6",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     -2.3000000000000003,
+     8.2,
+     -11.44
+    ]
+   }
+  },
+  {
+   "id": "tower-win-3",
+   "kind": "repeat",
+   "count": [
+    4,
+    1,
+    1
+   ],
+   "step": [
+    2.2,
+    0,
+    0
+   ],
+   "skip": [
+    [
+     3,
+     0,
+     0
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffcf8a",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     -2.3000000000000003,
+     11.2,
+     -11.44
+    ]
+   }
+  },
+  {
+   "id": "tower-win-4",
+   "kind": "repeat",
+   "count": [
+    4,
+    1,
+    1
+   ],
+   "step": [
+    2.2,
+    0,
+    0
+   ],
+   "skip": [],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffe2b0",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     -2.3000000000000003,
+     14.2,
+     -11.44
+    ]
+   }
+  },
+  {
+   "id": "tower-win-5",
+   "kind": "repeat",
+   "count": [
+    4,
+    1,
+    1
+   ],
+   "step": [
+    2.2,
+    0,
+    0
+   ],
+   "skip": [
+    [
+     0,
+     0,
+     0
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#fff1d6",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     -2.3000000000000003,
+     17.2,
+     -11.44
+    ]
+   }
+  },
+  {
+   "id": "flats",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    10,
+    13,
+    8
+   ],
+   "transform": {
+    "position": [
+     12,
+     6.5,
+     -14
+    ]
+   },
+   "material": {
+    "color": "#b98e74",
+    "roughness": 0.85
+   },
+   "tags": [
+    "building"
+   ]
+  },
+  {
+   "id": "flats-roof",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    10.4,
+    0.3,
+    8.4
+   ],
+   "transform": {
+    "position": [
+     12,
+     13.15,
+     -14
+    ]
+   },
+   "material": {
+    "color": "#4a4d52",
+    "roughness": 0.8
+   }
+  },
+  {
+   "id": "flats-win-0",
+   "kind": "repeat",
+   "count": [
+    4,
+    1,
+    1
+   ],
+   "step": [
+    2.2,
+    0,
+    0
+   ],
+   "skip": [
+    [
+     0,
+     0,
+     0
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffcf8a",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     8.7,
+     2.2,
+     -9.94
+    ]
+   }
+  },
+  {
+   "id": "flats-win-1",
+   "kind": "repeat",
+   "count": [
+    4,
+    1,
+    1
+   ],
+   "step": [
+    2.2,
+    0,
+    0
+   ],
+   "skip": [
+    [
+     1,
+     0,
+     0
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffe2b0",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     8.7,
+     5.2,
+     -9.94
+    ]
+   }
+  },
+  {
+   "id": "flats-win-2",
+   "kind": "repeat",
+   "count": [
+    4,
+    1,
+    1
+   ],
+   "step": [
+    2.2,
+    0,
+    0
+   ],
+   "skip": [
+    [
+     2,
+     0,
+     0
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      0,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#fff1d6",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     8.7,
+     8.2,
+     -9.94
+    ]
+   }
+  },
+  {
+   "id": "hall",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    8,
+    11,
+    14
+   ],
+   "transform": {
+    "position": [
+     -18,
+     5.5,
+     2
+    ]
+   },
+   "material": {
+    "color": "#e2dccf",
+    "roughness": 0.85
+   },
+   "tags": [
+    "building"
+   ]
+  },
+  {
+   "id": "hall-roof",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    8.4,
+    0.3,
+    14.4
+   ],
+   "transform": {
+    "position": [
+     -18,
+     11.15,
+     2
+    ]
+   },
+   "material": {
+    "color": "#4a4d52",
+    "roughness": 0.8
+   }
+  },
+  {
+   "id": "hall-win-0",
+   "kind": "repeat",
+   "count": [
+    1,
+    1,
+    6
+   ],
+   "step": [
+    0,
+    0,
+    2.2
+   ],
+   "skip": [
+    [
+     0,
+     0,
+     3
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffcf8a",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     -13.94,
+     2.2,
+     -3.5
+    ]
+   }
+  },
+  {
+   "id": "hall-win-1",
+   "kind": "repeat",
+   "count": [
+    1,
+    1,
+    6
+   ],
+   "step": [
+    0,
+    0,
+    2.2
+   ],
+   "skip": [
+    [
+     0,
+     0,
+     4
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffe2b0",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     -13.94,
+     5.2,
+     -3.5
+    ]
+   }
+  },
+  {
+   "id": "hall-win-2",
+   "kind": "repeat",
+   "count": [
+    1,
+    1,
+    6
+   ],
+   "step": [
+    0,
+    0,
+    2.2
+   ],
+   "skip": [
+    [
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     5
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#fff1d6",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     -13.94,
+     8.2,
+     -3.5
+    ]
+   }
+  },
+  {
+   "id": "office",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    8,
+    16,
+    12
+   ],
+   "transform": {
+    "position": [
+     19,
+     8,
+     1
+    ]
+   },
+   "material": {
+    "color": "#9fa9b4",
+    "roughness": 0.85
+   },
+   "tags": [
+    "building"
+   ]
+  },
+  {
+   "id": "office-roof",
+   "kind": "primitive",
+   "shape": "box",
+   "size": [
+    8.4,
+    0.3,
+    12.4
+   ],
+   "transform": {
+    "position": [
+     19,
+     16.15,
+     1
+    ]
+   },
+   "material": {
+    "color": "#4a4d52",
+    "roughness": 0.8
+   }
+  },
+  {
+   "id": "office-win-0",
+   "kind": "repeat",
+   "count": [
+    1,
+    1,
+    5
+   ],
+   "step": [
+    0,
+    0,
+    2.2
+   ],
+   "skip": [
+    [
+     0,
+     0,
+     2
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffcf8a",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     14.94,
+     2.2,
+     -3.4000000000000004
+    ]
+   }
+  },
+  {
+   "id": "office-win-1",
+   "kind": "repeat",
+   "count": [
+    1,
+    1,
+    5
+   ],
+   "step": [
+    0,
+    0,
+    2.2
+   ],
+   "skip": [
+    [
+     0,
+     0,
+     3
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffe2b0",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     14.94,
+     5.2,
+     -3.4000000000000004
+    ]
+   }
+  },
+  {
+   "id": "office-win-2",
+   "kind": "repeat",
+   "count": [
+    1,
+    1,
+    5
+   ],
+   "step": [
+    0,
+    0,
+    2.2
+   ],
+   "skip": [
+    [
+     0,
+     0,
+     4
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#fff1d6",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     14.94,
+     8.2,
+     -3.4000000000000004
+    ]
+   }
+  },
+  {
+   "id": "office-win-3",
+   "kind": "repeat",
+   "count": [
+    1,
+    1,
+    5
+   ],
+   "step": [
+    0,
+    0,
+    2.2
+   ],
+   "skip": [
+    [
+     0,
+     0,
+     0
+    ]
+   ],
+   "of": {
+    "kind": "primitive",
+    "shape": "box",
+    "size": [
+     1.3,
+     1.7,
+     0.12
+    ],
+    "transform": {
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    "material": {
+     "color": "#1c2330",
+     "roughness": 0.15,
+     "metalness": 0.2,
+     "night": {
+      "emissive": "#ffcf8a",
+      "intensity": 1.15
+     }
+    }
+   },
+   "transform": {
+    "position": [
+     14.94,
+     11.2,
+     -3.4000000000000004
+    ]
+   }
+  },
+  {
+   "id": "lamp-0",
+   "kind": "group",
+   "transform": {
+    "position": [
+     -14,
+     0,
+     -9
+    ]
+   },
+   "children": [
+    {
+     "id": "lamp-0-pole",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.07,
+      4.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       2.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#2d3035",
+      "metalness": 0.6,
+      "roughness": 0.4
+     }
+    },
+    {
+     "id": "lamp-0-head",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.26
+     ],
+     "transform": {
+      "position": [
+       0,
+       4.35,
+       0
+      ]
+     },
+     "material": {
+      "color": "#f3ead8",
+      "roughness": 0.3,
+      "night": {
+       "emissive": "#ffd59a",
+       "intensity": 4
+      }
+     }
+    },
+    {
+     "id": "lamp-0-light",
+     "kind": "light",
+     "light": "point",
+     "color": "#ffc98a",
+     "intensity": 10,
+     "distance": 16,
+     "decay": 2,
+     "night": true,
+     "transform": {
+      "position": [
+       0,
+       4.1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "lamp-1",
+   "kind": "group",
+   "transform": {
+    "position": [
+     -14,
+     0,
+     9
+    ]
+   },
+   "children": [
+    {
+     "id": "lamp-1-pole",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.07,
+      4.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       2.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#2d3035",
+      "metalness": 0.6,
+      "roughness": 0.4
+     }
+    },
+    {
+     "id": "lamp-1-head",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.26
+     ],
+     "transform": {
+      "position": [
+       0,
+       4.35,
+       0
+      ]
+     },
+     "material": {
+      "color": "#f3ead8",
+      "roughness": 0.3,
+      "night": {
+       "emissive": "#ffd59a",
+       "intensity": 4
+      }
+     }
+    },
+    {
+     "id": "lamp-1-light",
+     "kind": "light",
+     "light": "point",
+     "color": "#ffc98a",
+     "intensity": 10,
+     "distance": 16,
+     "decay": 2,
+     "night": true,
+     "transform": {
+      "position": [
+       0,
+       4.1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "lamp-2",
+   "kind": "group",
+   "transform": {
+    "position": [
+     0,
+     0,
+     12
+    ]
+   },
+   "children": [
+    {
+     "id": "lamp-2-pole",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.07,
+      4.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       2.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#2d3035",
+      "metalness": 0.6,
+      "roughness": 0.4
+     }
+    },
+    {
+     "id": "lamp-2-head",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.26
+     ],
+     "transform": {
+      "position": [
+       0,
+       4.35,
+       0
+      ]
+     },
+     "material": {
+      "color": "#f3ead8",
+      "roughness": 0.3,
+      "night": {
+       "emissive": "#ffd59a",
+       "intensity": 4
+      }
+     }
+    },
+    {
+     "id": "lamp-2-light",
+     "kind": "light",
+     "light": "point",
+     "color": "#ffc98a",
+     "intensity": 10,
+     "distance": 16,
+     "decay": 2,
+     "night": true,
+     "transform": {
+      "position": [
+       0,
+       4.1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "lamp-3",
+   "kind": "group",
+   "transform": {
+    "position": [
+     14,
+     0,
+     -9
+    ]
+   },
+   "children": [
+    {
+     "id": "lamp-3-pole",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.07,
+      4.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       2.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#2d3035",
+      "metalness": 0.6,
+      "roughness": 0.4
+     }
+    },
+    {
+     "id": "lamp-3-head",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.26
+     ],
+     "transform": {
+      "position": [
+       0,
+       4.35,
+       0
+      ]
+     },
+     "material": {
+      "color": "#f3ead8",
+      "roughness": 0.3,
+      "night": {
+       "emissive": "#ffd59a",
+       "intensity": 4
+      }
+     }
+    },
+    {
+     "id": "lamp-3-light",
+     "kind": "light",
+     "light": "point",
+     "color": "#ffc98a",
+     "intensity": 10,
+     "distance": 16,
+     "decay": 2,
+     "night": true,
+     "transform": {
+      "position": [
+       0,
+       4.1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "lamp-4",
+   "kind": "group",
+   "transform": {
+    "position": [
+     14,
+     0,
+     9
+    ]
+   },
+   "children": [
+    {
+     "id": "lamp-4-pole",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.07,
+      4.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       2.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#2d3035",
+      "metalness": 0.6,
+      "roughness": 0.4
+     }
+    },
+    {
+     "id": "lamp-4-head",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.26
+     ],
+     "transform": {
+      "position": [
+       0,
+       4.35,
+       0
+      ]
+     },
+     "material": {
+      "color": "#f3ead8",
+      "roughness": 0.3,
+      "night": {
+       "emissive": "#ffd59a",
+       "intensity": 4
+      }
+     }
+    },
+    {
+     "id": "lamp-4-light",
+     "kind": "light",
+     "light": "point",
+     "color": "#ffc98a",
+     "intensity": 10,
+     "distance": 16,
+     "decay": 2,
+     "night": true,
+     "transform": {
+      "position": [
+       0,
+       4.1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "lamp-5",
+   "kind": "group",
+   "transform": {
+    "position": [
+     0,
+     0,
+     -9
+    ]
+   },
+   "children": [
+    {
+     "id": "lamp-5-pole",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.07,
+      4.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       2.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#2d3035",
+      "metalness": 0.6,
+      "roughness": 0.4
+     }
+    },
+    {
+     "id": "lamp-5-head",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.26
+     ],
+     "transform": {
+      "position": [
+       0,
+       4.35,
+       0
+      ]
+     },
+     "material": {
+      "color": "#f3ead8",
+      "roughness": 0.3,
+      "night": {
+       "emissive": "#ffd59a",
+       "intensity": 4
+      }
+     }
+    },
+    {
+     "id": "lamp-5-light",
+     "kind": "light",
+     "light": "point",
+     "color": "#ffc98a",
+     "intensity": 10,
+     "distance": 16,
+     "decay": 2,
+     "night": true,
+     "transform": {
+      "position": [
+       0,
+       4.1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "lamp-6",
+   "kind": "group",
+   "transform": {
+    "position": [
+     -6,
+     0,
+     16
+    ]
+   },
+   "children": [
+    {
+     "id": "lamp-6-pole",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.07,
+      4.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       2.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#2d3035",
+      "metalness": 0.6,
+      "roughness": 0.4
+     }
+    },
+    {
+     "id": "lamp-6-head",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.26
+     ],
+     "transform": {
+      "position": [
+       0,
+       4.35,
+       0
+      ]
+     },
+     "material": {
+      "color": "#f3ead8",
+      "roughness": 0.3,
+      "night": {
+       "emissive": "#ffd59a",
+       "intensity": 4
+      }
+     }
+    },
+    {
+     "id": "lamp-6-light",
+     "kind": "light",
+     "light": "point",
+     "color": "#ffc98a",
+     "intensity": 10,
+     "distance": 16,
+     "decay": 2,
+     "night": true,
+     "transform": {
+      "position": [
+       0,
+       4.1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "lamp-7",
+   "kind": "group",
+   "transform": {
+    "position": [
+     8,
+     0,
+     16
+    ]
+   },
+   "children": [
+    {
+     "id": "lamp-7-pole",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.07,
+      4.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       2.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#2d3035",
+      "metalness": 0.6,
+      "roughness": 0.4
+     }
+    },
+    {
+     "id": "lamp-7-head",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      0.26
+     ],
+     "transform": {
+      "position": [
+       0,
+       4.35,
+       0
+      ]
+     },
+     "material": {
+      "color": "#f3ead8",
+      "roughness": 0.3,
+      "night": {
+       "emissive": "#ffd59a",
+       "intensity": 4
+      }
+     }
+    },
+    {
+     "id": "lamp-7-light",
+     "kind": "light",
+     "light": "point",
+     "color": "#ffc98a",
+     "intensity": 10,
+     "distance": 16,
+     "decay": 2,
+     "night": true,
+     "transform": {
+      "position": [
+       0,
+       4.1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "id": "tree-0",
+   "kind": "group",
+   "transform": {
+    "position": [
+     -7,
+     0,
+     4
+    ],
+    "scale": 0.9
+   },
+   "children": [
+    {
+     "id": "tree-0-trunk",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.18,
+      2.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       1.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#5b4636",
+      "roughness": 0.9
+     }
+    },
+    {
+     "id": "tree-0-crown",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      1.5
+     ],
+     "transform": {
+      "position": [
+       0,
+       3,
+       0
+      ],
+      "scale": [
+       1,
+       1.15,
+       1
+      ]
+     },
+     "material": {
+      "color": "#4f6b3f",
+      "roughness": 0.95
+     }
+    }
+   ]
+  },
+  {
+   "id": "tree-1",
+   "kind": "group",
+   "transform": {
+    "position": [
+     6,
+     0,
+     5
+    ],
+    "scale": 1.05
+   },
+   "children": [
+    {
+     "id": "tree-1-trunk",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.18,
+      2.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       1.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#5b4636",
+      "roughness": 0.9
+     }
+    },
+    {
+     "id": "tree-1-crown",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      1.5
+     ],
+     "transform": {
+      "position": [
+       0,
+       3,
+       0
+      ],
+      "scale": [
+       1,
+       1.15,
+       1
+      ]
+     },
+     "material": {
+      "color": "#4f6b3f",
+      "roughness": 0.95
+     }
+    }
+   ]
+  },
+  {
+   "id": "tree-2",
+   "kind": "group",
+   "transform": {
+    "position": [
+     -3,
+     0,
+     -4
+    ],
+    "scale": 1.2
+   },
+   "children": [
+    {
+     "id": "tree-2-trunk",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.18,
+      2.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       1.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#5b4636",
+      "roughness": 0.9
+     }
+    },
+    {
+     "id": "tree-2-crown",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      1.5
+     ],
+     "transform": {
+      "position": [
+       0,
+       3,
+       0
+      ],
+      "scale": [
+       1,
+       1.15,
+       1
+      ]
+     },
+     "material": {
+      "color": "#4f6b3f",
+      "roughness": 0.95
+     }
+    }
+   ]
+  },
+  {
+   "id": "tree-3",
+   "kind": "group",
+   "transform": {
+    "position": [
+     9,
+     0,
+     -3
+    ],
+    "scale": 0.9
+   },
+   "children": [
+    {
+     "id": "tree-3-trunk",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.18,
+      2.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       1.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#5b4636",
+      "roughness": 0.9
+     }
+    },
+    {
+     "id": "tree-3-crown",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      1.5
+     ],
+     "transform": {
+      "position": [
+       0,
+       3,
+       0
+      ],
+      "scale": [
+       1,
+       1.15,
+       1
+      ]
+     },
+     "material": {
+      "color": "#4f6b3f",
+      "roughness": 0.95
+     }
+    }
+   ]
+  },
+  {
+   "id": "tree-4",
+   "kind": "group",
+   "transform": {
+    "position": [
+     -10,
+     0,
+     -2
+    ],
+    "scale": 1.05
+   },
+   "children": [
+    {
+     "id": "tree-4-trunk",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.18,
+      2.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       1.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#5b4636",
+      "roughness": 0.9
+     }
+    },
+    {
+     "id": "tree-4-crown",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      1.5
+     ],
+     "transform": {
+      "position": [
+       0,
+       3,
+       0
+      ],
+      "scale": [
+       1,
+       1.15,
+       1
+      ]
+     },
+     "material": {
+      "color": "#4f6b3f",
+      "roughness": 0.95
+     }
+    }
+   ]
+  },
+  {
+   "id": "tree-5",
+   "kind": "group",
+   "transform": {
+    "position": [
+     3,
+     0,
+     9
+    ],
+    "scale": 1.2
+   },
+   "children": [
+    {
+     "id": "tree-5-trunk",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      0.18,
+      2.2
+     ],
+     "transform": {
+      "position": [
+       0,
+       1.1,
+       0
+      ]
+     },
+     "material": {
+      "color": "#5b4636",
+      "roughness": 0.9
+     }
+    },
+    {
+     "id": "tree-5-crown",
+     "kind": "primitive",
+     "shape": "sphere",
+     "size": [
+      1.5
+     ],
+     "transform": {
+      "position": [
+       0,
+       3,
+       0
+      ],
+      "scale": [
+       1,
+       1.15,
+       1
+      ]
+     },
+     "material": {
+      "color": "#4f6b3f",
+      "roughness": 0.95
+     }
+    }
+   ]
+  },
+  {
+   "id": "fountain",
+   "kind": "group",
+   "transform": {
+    "position": [
+     0,
+     0,
+     1
+    ]
+   },
+   "children": [
+    {
+     "id": "fountain-basin",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      2.6,
+      0.6
+     ],
+     "inner": 2.3,
+     "transform": {
+      "position": [
+       0,
+       0.3,
+       0
+      ]
+     },
+     "material": {
+      "color": "#cfc8ba",
+      "roughness": 0.7
+     }
+    },
+    {
+     "id": "fountain-water",
+     "kind": "primitive",
+     "shape": "cylinder",
+     "size": [
+      2.3,
+      0.1
+     ],
+     "transform": {
+      "position": [
+       0,
+       0.45,
+       0
+      ]
+     },
+     "material": {
+      "color": "#2f4f66",
+      "roughness": 0.05,
+      "metalness": 0.4,
+      "night": {
+       "emissive": "#3fa9d9",
+       "intensity": 0.8
+      }
+     }
+    },
+    {
+     "id": "fountain-light",
+     "kind": "light",
+     "light": "point",
+     "color": "#7cc9ff",
+     "intensity": 4,
+     "distance": 7,
+     "night": true,
+     "transform": {
+      "position": [
+       0,
+       1.2,
+       0
+      ]
+     }
+    }
+   ]
+  }
+ ],
+ "cameras": {
+  "default": {
+   "position": [
+    -15,
+    1.8,
+    17
+   ],
+   "target": [
+    3,
+    9,
+    -8
+   ],
+   "fov": 60
+  },
+  "south": {
+   "position": [
+    3.5,
+    1.7,
+    -10.5
+   ],
+   "target": [
+    2,
+    10,
+    20
+   ],
+   "fov": 70
+  },
+  "moon": {
+   "position": [
+    -12,
+    1.7,
+    2
+   ],
+   "target": [
+    15,
+    15,
+    -4.3
+   ],
+   "fov": 50
+  },
+  "iss": {
+   "position": [
+    -8,
+    1.7,
+    10
+   ],
+   "target": [
+    -1.4,
+    18.1,
+    0.6
+   ],
+   "fov": 75
+  },
+  "up": {
+   "position": [
+    0,
+    1.7,
+    4
+   ],
+   "target": [
+    0.5,
+    30,
+    -6
+   ],
+   "fov": 85
+  },
+  "plaza": {
+   "position": [
+    -9,
+    4,
+    14
+   ],
+   "target": [
+    2,
+    2,
+    -4
+   ],
+   "fov": 50
+  }
+ }
+}

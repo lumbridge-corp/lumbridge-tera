@@ -58,6 +58,8 @@ export const PipeDef = z.object({
   radius: z.number().positive().optional(),
   color: Col.optional(),
   opacity: z.number().min(0).max(1).optional(),
+  /** Metal collars along the pipe: false = none; every = metres apart (default 2.4), max = at most this many (spread out on long runs), tube = ring thickness as a fraction of the pipe radius (default 0.13), color (default #3a404a). */
+  collars: z.union([z.literal(false), z.object({ every: z.number().positive().optional(), max: z.number().int().min(2).optional(), tube: z.number().positive().max(0.5).optional(), color: Col.optional() })]).optional(),
 });
 
 export const FlowFields = {
@@ -104,6 +106,21 @@ export const LiveMessage = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ping"), t: z.number().optional() }),
 ]);
 export type LiveMessage = z.infer<typeof LiveMessage>;
+
+/**
+ * A recorded live stream for `?replay=<url>` (CONTRACT.md section 9a): JSONL, one
+ * `{ t, msg }` per line, `t` = seconds from the start of the recording, `msg` = a
+ * LiveMessage. An optional first line `{ tera: "replay/v1", duration?, title? }` sets the
+ * loop length (default: the last `t`).
+ */
+export const ReplayLine = z.object({ t: z.number().finite().nonnegative(), msg: LiveMessage });
+export type ReplayLine = z.infer<typeof ReplayLine>;
+export const ReplayHeader = z.object({
+  tera: z.literal("replay/v1"),
+  duration: z.number().finite().positive().optional(),
+  title: z.string().max(200).optional(),
+});
+export type ReplayHeader = z.infer<typeof ReplayHeader>;
 
 // ---------------------------------------------------------------- reference checks
 

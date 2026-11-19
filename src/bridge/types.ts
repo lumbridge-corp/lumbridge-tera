@@ -7,6 +7,27 @@ export interface Box {
   max: Vec3;
 }
 
+/** Day/night state of the sky (bridge info().sky and the `tera:sky` event). */
+export interface SkyState {
+  mode: "real" | "sun" | "color" | "hdri";
+  /** 0 day … 1 night: environment.nightLights.ramp (default +2° → −6°) on the sun's elevation; always 0 for color/hdri skies. */
+  nightness: number;
+  /** nightness ≥ 0.5 (the sun below ≈ −2° with the default ramp). */
+  isNight: boolean;
+  /** Degrees above the horizon (refracted), null for color/hdri skies. */
+  sunElevation: number | null;
+  sunAzimuth: number | null;
+  moonElevation?: number;
+  moonAzimuth?: number;
+  moonIllumination?: number;
+  /** Sky time, ISO UTC. */
+  time?: string;
+  /** Satellites drawn in the last frame (real sky). */
+  satellites?: number;
+  /** "day" | "golden" | "civil" | "nautical" | "astronomical" | "night" (real sky). */
+  phase?: string;
+}
+
 export interface TeraBridge {
   version: "bridge/v1";
   load(world: WorldPack, baseUrl?: string): Promise<{ ok: true; warnings: string[] }>;
@@ -31,7 +52,8 @@ export interface TeraBridge {
   bounds(ids?: string[]): Promise<Record<string, Box | null>>;
   /** PNG (base64, no data: prefix) of the last rendered frame. */
   capture(): Promise<string>;
-  info(): Promise<{ renderer: "webgpu" | "webgl2"; entities: number; ready: boolean }>;
+  /** `sky`: day/night state (CONTRACT.md section 4): nightness 0..1, isNight, sun/moon positions, sky time. */
+  info(): Promise<{ renderer: "webgpu" | "webgl2"; entities: number; ready: boolean; sky?: SkyState }>;
 }
 
 declare global {

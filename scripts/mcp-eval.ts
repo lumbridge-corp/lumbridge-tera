@@ -158,6 +158,20 @@ try {
   assert.match(textOf(badRep), /repeat cannot copy a light/);
   savePng(await call("snapshot", { camera: { position: [0, 2.2, 4.5], target: [0, 0.5, -0.5], fov: 45 } }), "06-polish.png");
 
+  // shapes: a radial colonnade with a skipped gap, segment braces, a prism gable
+  const shp = await call("scene_apply", { ops: [
+    { op: "add", entity: { id: "cols", kind: "repeat", transform: { position: [2.5, 0, -1.5] }, radial: { count: 10, radius: 0.9 }, skip: [0],
+      of: { kind: "primitive", shape: "cylinder", size: [0.06, 1.2], transform: { position: [0, 0.6, 0] }, material: { color: "#f3ede2" } } } },
+    { op: "add", entity: { id: "brace", kind: "primitive", shape: "segment", from: [-2.5, 0, 1], to: [-2, 1.2, 1], radius: 0.04, material: { color: "#c9ccce" } } },
+    { op: "add", entity: { id: "gable", kind: "primitive", shape: "prism", size: [1.2, 0.6, 0.8], transform: { position: [2.5, 1.5, -1.5] }, material: { color: "#cfae80" } } },
+  ] });
+  assert.match(textOf(shp), /Applied 3\/3 ops/);
+  assert.match(textOf(await call("scene_find", { kind: "repeat" })), /cols repeat 9 × primitive cylinder \(radial 10 around y/);
+  assert.match(textOf(await call("scene_find", { query: "brace" })), /segment \[-2\.5, 0, 1\]→\[-2, 1\.2, 1\] r 0\.04/);
+  const badSeg = await call("scene_apply", { ops: [{ op: "add", entity: { id: "rod", kind: "primitive", shape: "segment", size: [0.1, 1] } }] }, true);
+  assert.match(textOf(badSeg), /segment needs "from" and "to"/);
+  savePng(await call("snapshot", { camera: { position: [0, 2.6, 5], target: [0.5, 0.6, -0.8], fov: 45 } }), "07-shapes.png");
+
   console.log(`\nALL PASS (${results.length} tool calls). Images in ${outDir}`);
 } finally {
   await client.close().catch(() => {});

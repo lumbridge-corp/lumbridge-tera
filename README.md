@@ -15,7 +15,7 @@ Part 15 of [Lumbridge](https://lumbridgecorp.com) ([all repositories](https://gi
 
 ## Status
 
-- **Version:** 0.1.0. Interfaces can change until 1.0. The format every part follows is
+- **Version:** 0.2.0. Interfaces can change until 1.0. The format every part follows is
   [CONTRACT.md](CONTRACT.md).
 - **Runs on:** Linux, with Node 22.18+ and Google Chrome. Rendering is tested on a desktop
   AMD GPU (Vulkan), with WebGPU and WebGL 2. The live viewer runs in any current
@@ -65,7 +65,7 @@ script and writes an MP4 with ffmpeg; the same inputs give the same frames.
 
 | Part | What it does |
 |---|---|
-| **Worlds** | `world.json`: entities (primitives, glTF models, splats, text, lights, actors, flows, meters, repeats), materials, a sky (colour, HDRI, or a sun placed from a date, time and place), fog, post effects (AO, bloom, depth of field, tilt-shift), named cameras. Schema in `src/schema/`, explained in [CONTRACT.md](CONTRACT.md). |
+| **Worlds** | `world.json`: entities (primitives, glTF models, splats, text, lights, actors, flows, meters, repeats), materials, a sky (colour, HDRI, a sun placed from a date, time and place, or the real sky), fog, post effects (AO, bloom, depth of field, tilt-shift), named cameras. Schema in `src/schema/`, explained in [CONTRACT.md](CONTRACT.md). |
 | **MCP server** | `tera-mcp`, a stdio MCP server: create and open worlds, apply ops, find entities with real bounds, take snapshots the agent can see, validate and preview camera scripts, render video, import assets. [docs/mcp.md](docs/mcp.md). |
 | **Camera scripts** | `camera/v1` JSON: shots of keyframes or orbits, easing, events that change the world at a time. `tera validate` checks them; `tera render` turns them into MP4. |
 | **Live viewer** | Loading screen, camera presets, smooth flights, click-to-inspect cards, a live WebSocket feed that moves actors and meters, adaptive quality for phones. [docs/viewer.md](docs/viewer.md). |
@@ -117,6 +117,18 @@ and bloom inputs; a renderer that cannot build an effect skips it with a warning
 frame-exact. Headless Chrome needs real GPU flags for this; `src/render/host.ts` pins the
 ones that work on Linux with Vulkan.
 
+## Real sky
+
+Set `"sky": { "mode": "real", "time": "now", "lat": 37.77, "lon": -122.42 }` and the world
+stands under the sky of that place: the sun where it is, the moon with its phase, about 9 000
+catalogue stars, the planets, the Milky Way and, from an orbital-elements file, Starlink and
+the ISS crossing overhead. Live pages follow the clock, so the world goes dark at night and
+windows and lamps marked `night` light up; the HUD has a time control to scrub through the day.
+Renders take a fixed time and stay frame-exact. Try it with `node bin/tera.ts serve worlds/night`.
+[docs/sky.md](docs/sky.md).
+
+![The night world: a small plaza under the real sky of San Francisco, with lit windows, street lamps, stars and the Milky Way.](docs/assets/night.jpg)
+
 ## How it fits the system
 
 Tera works alone; it needs no other Lumbridge part. Any agent with an MCP client can use it.
@@ -129,13 +141,15 @@ Nothing leaves your machine unless you set it up. `npm run dev` and `tera serve`
 127.0.0.1. The MCP server talks to its client over stdio and starts a local headless Chrome.
 `asset_import` fetches a URL only when the agent passes one. `gen_*` tools call the gen
 worker at `TERA_GEN_URL`, only if you set it. The live feed connects only to the `?live=`
-address you give the page. No telemetry, no calls home.
+address you give the page. A real sky loads its satellite file from the `satellites.src` the
+world names (the example worlds use a local file). No telemetry, no calls home.
 
 ## Docs
 
 - [CONTRACT.md](CONTRACT.md) — the world, op, camera-script, page and worker formats
 - [docs/mcp.md](docs/mcp.md) — the MCP server: setup, tools, a worked session
 - [docs/viewer.md](docs/viewer.md) — the live viewer and its performance policy
+- [docs/sky.md](docs/sky.md) — the real sky, night lights and satellites
 - [docs/xr.md](docs/xr.md) — VR and AR on Quest 3 and Spectacles
 - [docs/hyperframes.md](docs/hyperframes.md) — Tera clips in HyperFrames videos
 - [workers/README.md](workers/README.md) — gen workers, models and licences

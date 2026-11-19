@@ -4,10 +4,25 @@
 > blooms only glow by default, material `glass` / `glowExact`, `repeat` entity, primitive `capsule`
 > and `arc` / `open` / `inner` / `radius`, light `distance` / `decay`, actor lanes (`move.lane`).
 >
+> engine/shapes (2026-11-18) changes this file: primitive `segment` (`from` / `to` / `radius`) and
+> `prism`, `repeat` `radial` (instead of `count` / `step`) and `skip`, flow `pipe.collars` (spacing, max count, thickness, colour); arcs, segments and repeat
+> copies are measured exactly by the Node bounds (`src/mcp/bounds.ts` `partBounds()`).
+>
 > engine/viewer (2026-11-18) changes this file: world-level `legend` (viewer UI only), live-mode
 > page flags `?ui=0` `?quality=` `?idle=`, render-mode `?labels=fit`, `tera:select` also for actors
 > plus `tera:deselect`, live name tags fitted to the screen. Render mode is pixel-identical
 > (`npm run parity:render`). The viewer itself: `docs/viewer.md`.
+>
+> engine/replay (2026-11-18) changes this file: section 9a `?replay=<url>` (a recorded live
+> stream played in a loop, no server), `&replaySpeed=` `&replayLoop=`, the HUD's "replay" state,
+> and `tera render|snapshot --labels fit`.
+>
+> engine/sky (2026-11-18) changes this file: `sky.mode: "real"` (section 1b: the real sky at a
+> time and place — sun, moon and phase, stars, planets, Milky Way, satellites, twilight, night),
+> night lights (`material.night`, light `night` / `day`, `environment.nightLights.ramp`), the
+> `sky` op's `duration` / `ease` (animated sky time), `info().sky` and the `tera:sky` event
+> (section 4), live-mode `?time=` / `?timeScale=`. Worlds without these fields render
+> pixel-identically (`npm run parity:render`). Details: `docs/sky.md`.
 
 This file is the agreement between the parts of Tera. Several people and agents build
 those parts at the same time; if your work needs a change here, change this file in
@@ -45,6 +60,7 @@ of truth; this is the summary.
   "title": "Demo",
   "sky": { "mode": "sun", "time": "2026-11-17T16:30:00-08:00", "lat": 37.77, "lon": -122.42 },
      // or { "mode": "color", "color": "#0b0d12" }  or { "mode": "hdri", "src": "assets/sky.hdr" }
+     // or { "mode": "real", "time": "now", "lat": 37.77, "lon": -122.42 }   (section 1b: stars, moon, satellites, night)
   "environment": { "exposure": 1.0, "fog": { "color": "#c9d4e0", "near": 40, "far": 400 },
                    "post": { "ao": true, "bloom": { "strength": 0.6 }, "dof": { "mode": "tiltshift", "center": 0.5, "band": 0.2 } } },
   "entities": [ Entity, ... ],
@@ -63,18 +79,19 @@ viewer's HUD, typically one entry per flow colour; it is never drawn into frames
 
 | kind | extra fields |
 |---|---|
-| `primitive` | `shape`: `box` `sphere` `plane` `cylinder` `torus` `cone` `capsule`; `size`: number[] (below); `material`; shape options `arc` `open` `inner` `radius` (below) |
+| `primitive` | `shape`: `box` `sphere` `plane` `cylinder` `torus` `cone` `capsule` `prism` `segment`; `size`: number[] (below); `material`; shape options `arc` `open` `inner` `radius` `from` `to` (below) |
 | `model` | `src`: `.glb` / `.gltf`; optional `animation` (clip name to loop) |
 | `splat` | `src`: `.spz` `.ply` `.splat` `.ksplat` (Spark.js formats) |
 | `text` | `text`, `size` (m), `color`, `align`: `left` `center` `right`, optional `billboard` |
-| `light` | `light`: `directional` `point` `spot` `ambient` `hemisphere`; `color`, `intensity`, optional `target` [x,y,z], `castShadow`; point/spot: `distance` (m where it reaches zero, 0 = unlimited, default 0), `decay` (default 2 = physical) |
+| `light` | `light`: `directional` `point` `spot` `ambient` `hemisphere`; `color`, `intensity`, optional `target` [x,y,z], `castShadow`; point/spot: `distance` (m where it reaches zero, 0 = unlimited, default 0), `decay` (default 2 = physical); `night: true` (on only at night) or `day: true` (on only by day), section 1b |
 | `group` | `children`: Entity[] |
-| `repeat` | `of`: Entity (copied; its `id` is only a label and may be omitted), `count`: [nx, ny, nz] (or n = [n,1,1]), `step`: [dx, dy, dz], optional `jitter` (below). Counts as ONE entity |
+| `repeat` | `of`: Entity (copied; its `id` is only a label and may be omitted), `count`: [nx, ny, nz] (or n = [n,1,1]) + `step`: [dx, dy, dz], **or** `radial` (below); optional `skip`, `jitter` (below). Counts as ONE entity |
 | `actor` | `style`: `worker` (built-in robot) `model` (+ `src` .glb); `color`, `label`, `state`: `idle` `walking` `working`, `move` (section 1a) |
-| `flow` | `path` (world path id); `rate` pulses/s, `speed` m/s, `color`, `size` m, `glow`, `style`: `dots` `dashes` `comet`; `pipe`: true \| `{ radius, color, opacity }` |
+| `flow` | `path` (world path id); `rate` pulses/s, `speed` m/s, `color`, `size` m, `glow`, `style`: `dots` `dashes` `comet`; `pipe`: true \| `{ radius, color, opacity, collars }` (collars: `false` = none, or `{ every (m, default 2.4), max (rings per pipe, spread out on long runs), tube (thickness / pipe radius, default 0.13), color }`) |
 | `meter` | `value` 0..1; `style`: `bar` `ring`; `size` [length\|radius, thickness]; `color` (default green → amber → red), `track`, `vertical` |
 
-`material` (primitives only): `{ color, roughness?, metalness?, emissive?, opacity?, wireframe?, glow?, glowExact?, glass? }`.
+`material` (primitives only): `{ color, roughness?, metalness?, emissive?, opacity?, wireframe?, glow?, glowExact?, glass?, night? }`
+(`night`: the night look, section 1b).
 `glow` is the emissive intensity; without `emissive` the primitive glows in its own colour.
 Tone mapping (ACES) desaturates bright emissive colours toward white; `glowExact: true` makes the
 glowing surface land on exactly its colour (`emissive`, else `color`) on both renderers, with or
@@ -93,6 +110,16 @@ multiply); no lights, actors, flows, meters or splats inside. `jitter`
 `{ seed?, position?: m | [x,y,z], rotation?: deg (around Y) | [x,y,z], scale?: ±fraction, color?: 0..1 }`
 varies each copy deterministically (same seed → same layout); rotation and scale turn about the
 copy's own origin, colour shifts hue/saturation/lightness.
+
+`radial: { count, radius, axis?: "x"|"y"|"z" (default "y"), startDeg?, lengthDeg? (default 360) }`
+instead of `count` / `step` puts the copies on a circle around the axis through the repeat's origin,
+each turned with its angle so the copied entity's local +Z points away from the axis and its local +Y
+runs along it (a pane facing +Z faces outward; turn the template 180° to face the centre). Angles:
+around y 0 = +Z, 90 = +X (as cylinder arcs); around z 0 = +X, 90 = +Y (as torus arcs); around x
+0 = +Y, 90 = +Z. A full circle spaces the copies evenly (360/count); a partial one puts the first copy
+at `startDeg` and the last at `startDeg + lengthDeg`. Jitter applies as for a grid.
+`skip: [[i, j, k], …]` leaves those cells empty (a number is a copy index: i of a single row, or
+the radial copy); the other copies, and their jitter, stay where they were.
 
 ### 1a. Living world — paths, graph, actors, flows (`src/schema/living.ts`)
 
@@ -141,6 +168,8 @@ y = 0 has position y = h/2):
 | `torus` | `[R, tube]` | standing in the XY plane (rotate `[90,0,0]` to lay it flat) |
 | `cone` | `[rBottom, h]` | along Y, apex up; optional third = top radius → frustum |
 | `capsule` | `[r, h]` | along Y, `h` = total height including the round ends |
+| `prism` | `[w, h, d]` | triangular prism: triangle in XY with its base `w` on y = −h/2 and apex at (0, h/2); depth `d` along Z (gables, wedges, roof ends) |
+| `segment` | — | a rod from `from` [x,y,z] to `to` [x,y,z] (in the entity's own space, so **not** centred on the position), radius `radius` (default 0.05), end caps unless `open` (legs, braces, cables, mic arms) |
 
 Shape options (primitive fields):
 - `arc: { start?, length }` degrees, only part of the sweep: cylinder/cone around Y with 0 = +Z and
@@ -150,9 +179,12 @@ Shape options (primitive fields):
 - `inner: r` — cylinder only: hollow with solid walls and end faces. A thick arch:
   `{ shape: "cylinder", size: [R, depth], inner: r, arc: { start: -90, length: 180 }, transform: { rotation: [-90, 0, 0] } }`
   stands on y = 0 with its opening along X.
-- `radius: r` — box only: rounded edges.
+- `radius: r` — box: rounded edges; segment: the rod radius.
+- `from`, `to` — segment only (required).
 
 `environment`:
+- `nightLights` `{ ramp?: [dayDeg, nightDeg] }` — the sun-elevation ramp night lights follow
+  (default `[2, -6]`), section 1b.
 - `fog` `{ color, near, far }` (metres from the camera). Under a `color` sky the background
   also fades to the fog colour at and below the horizon, so a fogged floor has no seam.
   A `color` sky shows its exact hex on both renderers.
@@ -183,6 +215,58 @@ Shape options (primitive fields):
       (default 0.3), `blur` (default 0.008). For town overviews: `center` on the subject,
       `band` 0.15–0.3, `blur` 0.006–0.012.
 
+### 1b. Real sky and night lights
+
+```jsonc
+"sky": {
+  "mode": "real",
+  "time": "now",                 // or ISO ("2026-11-18T17:20:00-08:00"; no zone = local clock time at lon). Default "now"
+  "lat": 37.77, "lon": -122.42,  // degrees, east positive
+  "timezone": "America/Los_Angeles",   // optional, the live viewer's clock display only
+  "timeScale": 1,                // sky seconds per script second (render) / page second (live). Default 1
+  "moon": true,                  // or { "scale": 1..8 } (1 = true size, 0.52°). Default true
+  "stars": true,                 // or { "magnitudeLimit": 6.5, "milkyWay": true }; false = none
+  "planets": true,               // Mercury, Venus, Mars, Jupiter, Saturn
+  "satellites": { "src": "assets/starlink.omm.json", "groups": ["starlink"], "max": 12000, "minElevation": 0, "visibleOnly": true },
+  "cityGlow": 0.15,              // warm night horizon 0..1; also hides faint stars and the Milky Way
+  "exposureAuto": true           // lift exposure gently at night (≤ ×1.25)
+}
+```
+
+- Sun: NOAA/Meeus position (~0.01°), refraction, a limb-darkened disc; its light colour and
+  strength through golden hour, civil/nautical/astronomical twilight, off below the horizon.
+  Moon: Meeus ch. 47 with topocentric parallax, phase, the lit limb turned toward the sun,
+  earthshine; at night the moon is the key light (cool, scaled by phase and height; the one
+  shadow-casting sky light is the sun by day and the moon by night). Stars: the Yale Bright
+  Star Catalogue (9 096 stars to V ≈ 6.5, B−V colours), placed by sidereal time and precession;
+  they fill in with the sky's limiting magnitude (twilight, moonlight, city glow). Milky Way:
+  a procedural band along the galactic plane, only under a dark, moonless sky.
+- Satellites: SGP4 (satellite.js) from `src` — a JSON array of OMM objects (Celestrak GP JSON)
+  or TLE text, resolved like asset paths. **The engine never fetches anything unless `src` is
+  given.** Drawn at their true azimuth/elevation from lat/lon with a short motion trail,
+  brightness from range and standard magnitude; `visibleOnly` (default) draws only what the eye
+  could see: sunlit satellites in a dark sky; `false` also draws eclipsed ones (faint blue) and
+  daytime ones. `groups`: `starlink` `oneweb` `iss` `stations` `kuiper` `all` (name filters).
+- Time. Render mode: sky time = `time` + script time × `timeScale` (`render()` without a script:
+  script time 0), a pure function of the world and t; `"now"` is read once at load. Live mode:
+  `"now"` follows the wall clock; an ISO time runs from the page open at `timeScale`; page flags
+  `?time=<ISO|now>` and `?timeScale=<x>` override; the HUD has a time control (docs/viewer.md).
+  `{ "op": "sky", "set": { "time": … }, "duration": s, "ease"? }` eases the sky time from the old
+  value to the new one (render mode: exact at every t; live: smoothly).
+- Night lights. *Nightness* n = 0 (day) … 1 (night) is a smooth ramp on the sun's elevation from
+  `environment.nightLights.ramp[0]` (default +2°) to `ramp[1]` (default −6°): ≈ 0.84 at −4°,
+  0.5 at −2°. Real and sun skies have it; colour/HDRI skies are always day (n = 0).
+  - `material.night: { emissive?, intensity? }` (standard primitive materials; not `glass` /
+    `glowExact`): the emissive goes from its day value (`emissive` × `glow`, usually black) to
+    `night.emissive` (default the material's `emissive`, else its `color`) × `night.intensity`
+    (default 1.5) as n goes 0 → 1 — windows that glow at night. Repeats keep it per copy.
+  - Lights: `night: true` → intensity × n (streetlights); `day: true` → intensity × (1 − n)
+    (fill lights authored for daylight). Not both.
+  - Exposed as `info().sky` (section 4) and a `tera:sky` event.
+- Worlds with a real sky should light by day with the sky (it is the key and fill); mark any
+  authored fill lights `day: true` so they do not grey out the night.
+- XR: stars to magnitude 5 and ≤ 1 500 satellites; AR draws no sky.
+
 ## 2. Ops — the one way to change a world
 
 Agents, camera-script events and the UI all change a world with the same ops
@@ -194,7 +278,7 @@ says which index failed).
 { "op": "add",     "entity": Entity, "parent"?: "group-id" }
 { "op": "update",  "id": "chair", "set": { /* partial Entity, deep-merged */ } }
 { "op": "remove",  "id": "chair" }
-{ "op": "sky",     "set": { /* partial sky */ } }
+{ "op": "sky",     "set": { /* partial sky */ }, "duration"?: 4, "ease"?: "inOutCubic" }   // duration: animate a real/sun sky's time
 { "op": "env",     "set": { /* partial environment */ } }
 { "op": "animate", "id": "chair", "to": { "position"?, "rotation"?, "scale"? },
                    "duration": 1.5, "ease": "inOutCubic" }   // only meaningful inside a script timeline
@@ -258,13 +342,16 @@ interface TeraBridge {
   bounds(ids?: string[]): Promise<Record<string, { min: Vec3; max: Vec3 } | null>>;
                                                      // world-space AABBs of real geometry (models, splats, text, groups); null = no extent (lights)
   capture(): Promise<string>;                        // PNG, base64, of the last rendered frame
-  info(): Promise<{ renderer: "webgpu" | "webgl2"; entities: number; ready: boolean }>;
+  info(): Promise<{ renderer: "webgpu" | "webgl2"; entities: number; ready: boolean; sky?: SkyState }>;
 }
+// SkyState: { mode, nightness 0..1, isNight (nightness ≥ 0.5), sunElevation, sunAzimuth (deg | null),
+//             moonElevation?, moonAzimuth?, moonIllumination?, time? (ISO), satellites?, phase? }
 ```
 
 Page URL flags: `?live=ws://host:port` (live feed, section 9), `?mode=render` (no controls, no UI chrome, no internal clock — only
 `seek` advances time), `?renderer=webgpu|webgl2|auto` (default `auto`: WebGPU when
 available and the world has no splats, else WebGL2 — Spark.js 2.x is WebGL2-only).
+Live mode only: `?time=<ISO|now>` and `?timeScale=<x>` set a real sky's clock (section 1b).
 Live mode only: `?ui=0` hides the viewer UI (loading screen, HUD, cards: for kiosks and embeds),
 `?quality=auto|high|medium|low|lower|lowest` (adaptive by default), `?idle=<s>` idle-orbit delay
 (default 60), see `docs/viewer.md`. Live name tags (actor `label`) are fitted to the screen (never
@@ -279,6 +366,12 @@ fires a DOM `CustomEvent("tera:select")` on `window` with
 `detail = { id, point: [x,y,z] | null, source: "mouse" | "controller" | "hand" }`. Actors count:
 a click on a robot selects the actor (the nearest of robot and mesh wins). A mouse click on
 nothing fires `CustomEvent("tera:deselect")`.
+
+Day and night: under a real or sun sky the page fires `CustomEvent("tera:sky")` on `window`
+with `detail = { nightness, sunElevation, isNight, moonIllumination?, time? }` when nightness
+changes (≥ 0.005, at most 5×/s in live mode, and whenever `isNight` flips), and keeps
+`--tera-nightness` (CSS custom property, 0..1) and `data-tera-night="0|1"` on `<html>` current,
+so a page around the canvas can switch to dark mode with the town.
 
 ## 5. Render CLI
 
@@ -387,3 +480,36 @@ parsed by `src/engine/live.ts` `parseLiveMessage`):
   viewer HUD shows the state: green live, amber (re)connecting, red offline (none with `?ui=0`).
 - Example — a worker starts a job in the lab: `{"type":"ops","ops":[{"op":"update","id":"bot-agent-1","set":{"move":{"to":"lab"},"state":"working"}}]}`;
   host load: `{"type":"ops","ops":[{"op":"update","id":"lab-load","set":{"value":0.83}}]}`.
+
+### 9a. Replay — `?replay=<url>`
+
+A recorded live stream, played on the page's own clock in a loop: no server, no WebSocket.
+The messages go through the same handlers as section 9 (`snapshot` → load, `ops` → apply),
+so robots tween exactly as they do live. Live mode only; `?replay=` wins over `?live=`.
+
+The file is JSONL (`src/schema/living.ts` `ReplayLine` / `ReplayHeader`, parsed by
+`src/engine/live.ts` `parseReplay`):
+
+```jsonc
+{ "tera": "replay/v1", "duration": 60, "title": "a working day" }   // optional first line
+{ "t": 0,    "msg": { "type": "ops", "ops": [ ... ] } }              // t = seconds from the start
+{ "t": 0.75, "msg": { "type": "ops", "ops": [ ... ] } }
+{ "t": 12,   "msg": { "type": "snapshot", "world": { ... } } }       // any LiveMessage
+```
+
+- Lines are sorted by `t` (ties keep file order). Malformed lines (not JSON, no/negative `t`,
+  an unknown message, an invalid op) are skipped and logged, never fatal. `ping` is ignored.
+- Loop length = the header's `duration`, else the last `t`; lines past it are dropped.
+- With `?world=` the page opens that world first and starts the replay once it is drawn
+  (most recordings carry ops only, so they stay small). Without `?world=` the recording must
+  start with a `snapshot` (asset paths then resolve against the replay URL).
+- At the loop point the page dips to the background (0.6 s), puts the world back as it was at
+  t = 0 (the `?world=` world, or the first snapshot), and starts over; the camera is kept.
+  `&replayLoop=cut` (and reduced motion) skips the dip.
+- `&replaySpeed=<x>` (0.1–32, default 1). The clock only runs while the page draws (a hidden
+  tab pauses it) and never jumps more than 0.25 s per frame.
+- An op that fails (e.g. an id the world does not have) is skipped; the rest of its message
+  still applies (live mode stops a message at its first failing op).
+- HUD: the dot turns grey with the word "replay" (none with `?ui=0`).
+- Example: `/?world=/world/world.json&replay=/world/replay.jsonl&replaySpeed=2`
+  (`worlds/living/replay.jsonl` is a 4 s sample).

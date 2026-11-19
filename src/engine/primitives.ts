@@ -4,6 +4,9 @@
 //   plane [w,d] lying flat in XZ          cylinder [r,h] along Y (optional 3rd = bottom radius)
 //   torus [R,tube] in the XY plane        cone [rBottom,h] along Y, apex up (optional 3rd = top radius → frustum)
 //   capsule [r,h] along Y, h = total height (ends included)
+//   prism [w,h,d] triangular prism: triangle in XY (base w on y = -h/2, apex on top), depth d along Z
+//   segment (no size): a cylinder from `from` to `to` with `radius` (default 0.05) — legs, braces,
+//     cables; not centred on the position: the points are in the entity's own space
 // Options: arc {start,length} degrees (cylinder/cone around Y from +Z toward +X; torus in its
 // plane from +X toward +Y), open (cylinder/cone without caps), inner (hollow cylinder with
 // solid walls), radius (rounded box edges).
@@ -12,7 +15,9 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import type { Entity } from "../schema/index.ts";
 
 export type PrimitiveEntity = Extract<Entity, { kind: "primitive" }>;
-type GeoSpec = Pick<PrimitiveEntity, "shape" | "size"> & Partial<Pick<PrimitiveEntity, "arc" | "open" | "inner" | "radius">>;
+type GeoSpec = Pick<PrimitiveEntity, "shape" | "size"> & Partial<Pick<PrimitiveEntity, "arc" | "open" | "inner" | "radius" | "from" | "to">>;
+
+export const SEGMENT_RADIUS = 0.05;
 
 const DEG = Math.PI / 180;
 
@@ -24,6 +29,7 @@ function arcOf(e: GeoSpec): [number, number] | null {
 
 /** True when the surface has visible insides (open tube, cut shell without walls): draw both sides. */
 export function primitiveDoubleSided(e: GeoSpec): boolean {
+  if (e.shape === "segment") return !!e.open;
   if (e.shape !== "cylinder" && e.shape !== "cone") return false;
   if (e.shape === "cylinder" && e.inner) return false;
   return !!e.open || !!arcOf(e);
@@ -57,6 +63,38 @@ function hollowCylinder(R: number, r: number, h: number, arc: [number, number] |
   return g;
 }
 
+/** Cylinder between two points (end caps unless `open`). */
+function segmentGeometry(from: number[], to: number[], r: number, open: boolean): THREE.BufferGeometry {
+  const a = new THREE.Vector3().fromArray(from), b = new THREE.Vector3().fromArray(to);
+  const dir = b.clone().sub(a);
+  const len = Math.max(dir.length(), 1e-6);
+  const g = new THREE.CylinderGeometry(r, r, len, Math.max(12, Math.min(48, Math.round(r * 240))), 1, open);
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize()));
+  g.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  return g;
+}
+
+/** Triangular prism, flat-shaded: triangle (−w/2,−h/2) (w/2,−h/2) (0,h/2) in XY, extruded ±d/2 along Z. */
+function prismGeometry(w: number, h: number, d: number): THREE.BufferGeometry {
+  const x = w / 2, y = h / 2, z = d / 2;
+  const L = [-x, -y], R = [x, -y], T = [0, y];
+  const v = (p: number[], zz: number) => [p[0]!, p[1]!, zz];
+  const tri = (a: number[], b: number[], c: number[]) => [...a, ...b, ...c];
+  const quad = (a: number[], b: number[], c: number[], e: number[]) => [...tri(a, b, c), ...tri(a, c, e)];
+  const pos = [
+    ...tri(v(L, z), v(R, z), v(T, z)), // front (+Z)
+    ...tri(v(R, -z), v(L, -z), v(T, -z)), // back
+    ...quad(v(L, -z), v(R, -z), v(R, z), v(L, z)), // bottom
+    ...quad(v(R, z), v(R, -z), v(T, -z), v(T, z)), // right slope
+    ...quad(v(L, -z), v(L, z), v(T, z), v(T, -z)), // left slope
+  ];
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(new Array((pos.length / 3) * 2).fill(0), 2));
+  g.computeVertexNormals(); // non-indexed: flat faces
+  return g;
+}
+
 export function primitiveGeometry(e: GeoSpec): THREE.BufferGeometry {
   const s = e.size ?? [];
   const arc = arcOf(e);
@@ -87,5 +125,9 @@ export function primitiveGeometry(e: GeoSpec): THREE.BufferGeometry {
       const r = s[0] ?? 0.25, h = Math.max(s[1] ?? 1, 2 * r);
       return new THREE.CapsuleGeometry(r, h - 2 * r, 12, 48);
     }
+    case "prism":
+      return prismGeometry(s[0] ?? 1, s[1] ?? s[0] ?? 1, s[2] ?? s[0] ?? 1);
+    case "segment":
+      return segmentGeometry(e.from ?? [0, 0, 0], e.to ?? [0, 1, 0], e.radius ?? SEGMENT_RADIUS, !!e.open);
   }
 }

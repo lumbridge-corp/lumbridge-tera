@@ -86,7 +86,7 @@ and `gen_*`. The server sends MCP progress notifications for both when the clien
 Conventions the tools teach the agent: metres, Y up, ground at y = 0, rotations in
 degrees, primitives centred on their position (a box of height h on the floor sits at
 y = h/2), primitive `size` = box `[w,h,d]`, sphere `[r]`, plane `[w,d]`, cylinder `[r,h]`,
-torus `[R,tube]`, cone `[rBottom,h,rTop?]`, capsule `[r,h]` (options `arc`, `open`, `inner`, box `radius`; `repeat` for rows of copies; `material.glass` for windows). `snapshot` draws the world as it is right now
+torus `[R,tube]`, cone `[rBottom,h,rTop?]`, capsule `[r,h]`, prism `[w,h,d]`, segment (`from`, `to`, `radius`: a rod between two points) (options `arc`, `open`, `inner`, box `radius`; `repeat` for rows of copies, `radial` for rings, `skip` for gaps; `material.glass` for windows). `snapshot` draws the world as it is right now
 (bridge `render()`), so it never replays script events.
 
 ## A worked session

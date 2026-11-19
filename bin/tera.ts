@@ -13,9 +13,9 @@ const USAGE = `tera — Lumbridge Tera CLI
 
   tera render <world-dir> <script.json> -o out.mp4 [--fps N] [--size WxH] [--from s] [--to s]
               [--renderer auto|webgpu|webgl2] [--workers N] [--crf 18] [--preset medium]
-              [--timeout 30] [--no-audio]
+              [--timeout 30] [--no-audio] [--labels fit]
   tera snapshot <world-dir> [--camera name|x,y,z:tx,ty,tz[:fov]] [--t s --script script.json]
-              [--size WxH] [--renderer ...] -o shot.png
+              [--size WxH] [--renderer ...] [--labels fit] -o shot.png
   tera serve <world-dir> [--port 8790] [--host 127.0.0.1]
   tera validate <script.json> [--world <world-dir>]
   tera clip <world-dir> <script.json> [--cache dir] [--size WxH] [--fps N] [--audio] [--force]
@@ -55,16 +55,17 @@ async function cmdRender(argv: string[]) {
     options: {
       out: { type: "string", short: "o" }, fps: { type: "string" }, size: { type: "string" }, from: { type: "string" }, to: { type: "string" },
       renderer: { type: "string" }, workers: { type: "string" }, crf: { type: "string" }, preset: { type: "string" }, timeout: { type: "string" },
-      "no-audio": { type: "boolean" },
+      "no-audio": { type: "boolean" }, labels: { type: "string" },
     },
   });
   if (p.length !== 2 || !v.out) die(USAGE);
+  if (v.labels !== undefined && v.labels !== "fit") die(`tera: --labels must be "fit"`);
   const tty = process.stderr.isTTY;
   let lastPct = -1;
   const r = await render({
     worldDir: p[0]!, script: p[1]!, out: v.out!, fps: num(v.fps, "fps"), ...size(v.size),
     from: num(v.from, "from"), to: num(v.to, "to"), renderer: renderer(v.renderer), workers: num(v.workers, "workers"),
-    crf: num(v.crf, "crf"), preset: v.preset, timeoutMs: (num(v.timeout, "timeout") ?? 30) * 1000, noAudio: v["no-audio"],
+    crf: num(v.crf, "crf"), preset: v.preset, timeoutMs: (num(v.timeout, "timeout") ?? 30) * 1000, noAudio: v["no-audio"], labels: v.labels === "fit" ? "fit" : undefined,
     onWarning: (w) => process.stderr.write(`warning: ${w}\n`),
     onProgress: ({ done, total, fps, etaS }) => {
       const pct = Math.floor((done / total) * 100);
@@ -82,9 +83,10 @@ async function cmdSnapshot(argv: string[]) {
   const { values: v, positionals: p } = parseArgs({
     args: argv,
     allowPositionals: true,
-    options: { out: { type: "string", short: "o" }, camera: { type: "string" }, t: { type: "string" }, script: { type: "string" }, size: { type: "string" }, renderer: { type: "string" }, timeout: { type: "string" } },
+    options: { out: { type: "string", short: "o" }, camera: { type: "string" }, t: { type: "string" }, script: { type: "string" }, size: { type: "string" }, renderer: { type: "string" }, timeout: { type: "string" }, labels: { type: "string" } },
   });
   if (p.length !== 1 || !v.out) die(USAGE);
+  if (v.labels !== undefined && v.labels !== "fit") die(`tera: --labels must be "fit"`);
   const worldDir = p[0]!;
   const world = loadWorld(worldDir);
   let script, t = 0;
@@ -100,7 +102,7 @@ async function cmdSnapshot(argv: string[]) {
   }
   const sz = size(v.size);
   script = { ...script, width: sz.width ?? (v.script ? script.width : 1280), height: sz.height ?? (v.script ? script.height : 720) };
-  const page = await openTera({ worldDir, width: script.width, height: script.height, renderer: renderer(v.renderer), timeoutMs: (num(v.timeout, "timeout") ?? 30) * 1000 });
+  const page = await openTera({ worldDir, width: script.width, height: script.height, renderer: renderer(v.renderer), timeoutMs: (num(v.timeout, "timeout") ?? 30) * 1000, labels: v.labels === "fit" ? "fit" : undefined });
   try {
     await page.bridge.loadScript(script);
     await page.bridge.seek(t);

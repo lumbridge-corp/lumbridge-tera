@@ -1,0 +1,7 @@
+{"tera":"replay/v1","duration":4,"title":"living town, a short replay"}
+{"t":0,"msg":{"type":"ops","ops":[{"op":"add","entity":{"id":"live-r1","kind":"actor","style":"worker","label":"replay","color":"#a6e6e6","state":"idle","move":{"from":"lab","to":"lab","speed":1.5}}}]}}
+{"t":0.5,"msg":{"type":"ops","ops":[{"op":"update","id":"live-r1","set":{"move":{"to":"depot","speed":1.5},"state":"working"}}]}}
+{"t":1,"msg":{"type":"ops","ops":[{"op":"update","id":"lab-load","set":{"value":0.9}}]}}
+BROKEN
+{"t":2,"msg":{"type":"ops","ops":[{"op":"update","id":"no-such-entity","set":{"value":0.1}},{"op":"update","id":"depot-load","set":{"value":0.8}}]}}
+{"t":3.5,"msg":{"type":"ops","ops":[{"op":"update","id":"live-r1","set":{"state":"idle"}}]}}

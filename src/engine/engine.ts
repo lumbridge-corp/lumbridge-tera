@@ -14,11 +14,14 @@ import { evaluateCamera } from "../camera/evaluate.ts";
 import { applyOp, countEntities, findEntity, hasSplats, worldAt } from "./timeline.ts";
 import { lerpTransform, progress, type AnimTo } from "./ease.ts";
 import { createRenderer, webgpuAvailable, type Backend, type RendererHandle } from "./renderer.ts";
-import { SkyRig } from "./sky.ts";
+import { SkyRig, type SkyFrame } from "./sky.ts";
+import { parseRealTime } from "./astro.ts";
+import { EASES } from "./ease.ts";
+import type { SkyInfo } from "./realSky.ts";
 import { buildText } from "./text.ts";
 import { primitiveDoubleSided, primitiveGeometry, type PrimitiveEntity } from "./primitives.ts";
 import { makeExact, setExactExposure } from "./exact.ts";
-import { repeatCells, type Cell } from "./repeat-math.ts";
+import { repeatCellsOf, type Cell } from "./repeat-math.ts";
 import { createPost, wantsPost, type PostPipeline } from "./post.ts";
 import { XrController, dispatchSelect, type XrHost, type XrMode, type XrOptions } from "./xr.ts";
 import type { Box } from "../bridge/types.ts";
@@ -37,7 +40,27 @@ export interface EngineOptions {
    * pixels; `?labels=fit` turns it on there, still deterministic).
    */
   labelFit?: boolean;
+  /** Live mode: sky time override for a real sky (`?time=` ISO or "now"). */
+  skyTime?: string;
+  /** Live mode: sky time scale override (`?timeScale=`). */
+  skyTimeScale?: number;
 }
+
+/** Live-mode clock of a real sky: anchored sky time + rate, with an optional eased jump. */
+interface SkyClock {
+  /** sky.time string it was anchored for ("" before the first world). */
+  key: string;
+  anchorSky: number;
+  anchorWall: number;
+  rate: number;
+  tween: { from: number; to: number; t0: number; duration: number; ease: Ease } | null;
+  /** Wall time (ms) of the last scrub, for the "fast" flag. */
+  scrubbedAt: number;
+}
+
+/** A night-lit material: emissive at day and at night (linear rgb × intensity). */
+interface NightMat { mat: THREE.MeshStandardMaterial; day: THREE.Color; night: THREE.Color }
+interface NightLight { light: THREE.Light; base: number; night: boolean }
 
 /** Live viewer quality knobs (viewer/quality.ts); never used in render mode. */
 export interface LiveQuality {
@@ -133,7 +156,7 @@ export function primitiveMaterial(e: Pick<PrimitiveEntity, "material">): THREE.M
     mat.userData.glowColor = mat.color.clone().multiplyScalar((m.glow ?? 1.5) / 3);
     return mat;
   }
-  return new THREE.MeshStandardMaterial({
+  const std = new THREE.MeshStandardMaterial({
     color: m.color ?? "#cccccc",
     roughness: m.roughness ?? 0.6,
     metalness: m.metalness ?? 0,
@@ -144,6 +167,13 @@ export function primitiveMaterial(e: Pick<PrimitiveEntity, "material">): THREE.M
     depthWrite: opacity >= 1,
     wireframe: m.wireframe ?? false,
   });
+  if (m.night) {
+    // night look (CONTRACT.md: material.night): the engine fades emissive between these
+    const day = std.emissive.clone().multiplyScalar(std.emissiveIntensity);
+    const night = new THREE.Color(m.night.emissive ?? m.emissive ?? m.color ?? "#ffd9a0").multiplyScalar(m.night.intensity ?? 1.5);
+    std.userData.teraNight = { day, night };
+  }
+  return std;
 }
 
 const GLASS_TINT = "#dfecea";
@@ -174,7 +204,10 @@ function matrixOf(t: Transform | undefined, out = new THREE.Matrix4()): THREE.Ma
   return out.compose(new THREE.Vector3(p[0], p[1], p[2]), new THREE.Quaternion().setFromEuler(new THREE.Euler(deg(r[0]), deg(r[1]), deg(r[2]))), new THREE.Vector3(s[0], s[1], s[2]));
 }
 
-const cellMove = (c: Cell) => new THREE.Matrix4().makeTranslation(c.position[0], c.position[1], c.position[2]);
+const cellMove = (c: Cell) => {
+  const [x, y, z] = c.position, b = c.basis;
+  return b ? new THREE.Matrix4().set(b[0]!, b[1]!, b[2]!, x, b[3]!, b[4]!, b[5]!, y, b[6]!, b[7]!, b[8]!, z, 0, 0, 0, 1) : new THREE.Matrix4().makeTranslation(x, y, z);
+};
 const cellJitter = (c: Cell) =>
   new THREE.Matrix4().compose(new THREE.Vector3(), new THREE.Quaternion().setFromEuler(new THREE.Euler(deg(c.rotation[0]), deg(c.rotation[1]), deg(c.rotation[2]))), new THREE.Vector3(c.scale, c.scale, c.scale));
 const addTint = (a: Cell["tint"], b: Cell["tint"]): Cell["tint"] => (!a ? b : !b ? a : [a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
@@ -199,6 +232,7 @@ export class Engine {
   private sparkRenderer: SparkRenderer | null = null;
   private tweens = new Map<string, Tween>();
   private lastTick = 0;
+  private pendingSkyTween: { duration: number; ease: Ease } | null = null;
   private post: PostPipeline | null = null;
   private postKey = "";
   readonly xr: XrController | null = null;
@@ -210,6 +244,15 @@ export class Engine {
   private frameHooks = new Set<(dt: number) => void>();
   private paused = false;
   private quality: LiveQuality = { pixelRatio: Math.min(globalThis.devicePixelRatio || 1, 2), post: true, shadowCap: 0 };
+  /** Live clock of a real sky (render mode derives sky time from the world + script time). */
+  private skyClock: SkyClock = { key: "", anchorSky: 0, anchorWall: 0, rate: 1, tween: null, scrubbedAt: -Infinity };
+  /** Wall clock at load: "now" in render mode (fixed for the whole render, so frames agree). */
+  private loadNow = Date.now();
+  private nightMats = new Set<NightMat>();
+  private nightLights = new Set<NightLight>();
+  private nightApplied = -1;
+  private lastSkyEvent: { n: number; night: boolean; at: number } | null = null;
+  private skyOpts: { time?: string; timeScale?: number };
 
   constructor(
     private host: HTMLElement,
@@ -218,6 +261,9 @@ export class Engine {
     opts: EngineOptions = {},
   ) {
     this.sky = new SkyRig(this.scene);
+    this.sky.live = !renderMode;
+    this.sky.track = (p) => this.track(p);
+    this.skyOpts = { time: opts.skyTime, timeScale: opts.skyTimeScale };
     if (opts.xr && !renderMode) {
       this.xr = new XrController(this.xrHost(), opts.xr);
       this.pref = "webgl2"; // the safe XR path (Spark splats are WebGL2 too)
@@ -355,6 +401,8 @@ export class Engine {
     this.scriptT = null;
     this.time = 0;
     this.tweens.clear();
+    this.loadNow = Date.now();
+    this.skyClock.key = "";
     for (const n of this.nodes.values()) this.disposeNode(n);
     this.nodes.clear();
     await this.ensureBackend(await this.chooseBackend(this.base));
@@ -384,6 +432,7 @@ export class Engine {
         break;
       }
       if (op.op === "animate" && !this.renderMode) this.tweens.set(op.id, { from: before, to: op.to, t0: now, duration: op.duration, ease: op.ease });
+      if (op.op === "sky" && op.duration && !this.renderMode && "time" in op.set) this.pendingSkyTween = { duration: op.duration, ease: op.ease ?? "inOutCubic" };
       applied++;
     }
     const world = this.script && this.scriptT !== null ? worldAt(this.base, this.script.events, this.scriptT).world : structuredClone(this.base);
@@ -507,7 +556,98 @@ export class Engine {
 
   info() {
     const w = this.current ?? this.base;
-    return { renderer: this.backend, entities: w ? countEntities(w.entities) : 0, ready: this.base !== null && this.pending.size === 0 };
+    return { renderer: this.backend, entities: w ? countEntities(w.entities) : 0, ready: this.base !== null && this.pending.size === 0, sky: this.skyInfo() };
+  }
+
+  /** Day/night state: nightness 0..1 (environment.nightLights.ramp on the sun's elevation), sun/moon, sky time. */
+  skyInfo(): SkyInfo {
+    return { ...this.sky.info };
+  }
+
+  // ---------------------------------------------------------------- sky time
+
+  /** Sky time (ms, UTC) of a real sky right now: world time + script time (render) or the live clock. */
+  skyTimeMs(): number | null {
+    const sky = this.current?.sky;
+    if (!sky || sky.mode !== "real") return null;
+    if (this.renderMode || this.scriptT !== null) {
+      const base = parseRealTime(sky.time, sky.lon, this.loadNow);
+      return base + (this.scriptT ?? 0) * 1000 * (sky.timeScale ?? 1);
+    }
+    const c = this.skyClock;
+    const key = `${sky.time ?? "now"}|${sky.lon}`;
+    const wall = performance.now();
+    if (c.key !== key) {
+      const from = c.key ? this.liveSkyMs(wall) : null;
+      const firstLoad = !c.key;
+      c.key = key;
+      const t = firstLoad && this.skyOpts.time ? this.skyOpts.time : sky.time;
+      let to: number;
+      try {
+        to = parseRealTime(t, sky.lon, Date.now());
+      } catch {
+        to = parseRealTime(sky.time, sky.lon, Date.now());
+      }
+      c.rate = this.skyOpts.timeScale ?? sky.timeScale ?? 1;
+      const tw = this.pendingSkyTween;
+      this.pendingSkyTween = null;
+      if (tw && from !== null) {
+        c.tween = { from, to, t0: wall, duration: tw.duration * 1000, ease: tw.ease };
+        c.anchorSky = to;
+        c.anchorWall = wall + tw.duration * 1000;
+      } else {
+        c.tween = null;
+        c.anchorSky = to;
+        c.anchorWall = wall;
+      }
+    }
+    return this.liveSkyMs(wall);
+  }
+
+  private liveSkyMs(wall: number): number {
+    const c = this.skyClock;
+    if (c.tween) {
+      const u = (wall - c.tween.t0) / c.tween.duration;
+      if (u < 1) return c.tween.from + (c.tween.to - c.tween.from) * EASES[c.tween.ease](Math.max(0, u));
+      c.tween = null;
+    }
+    return c.anchorSky + (wall - c.anchorWall) * c.rate;
+  }
+
+  /** Live mode: the sky clock (for the viewer's time control). null without a real sky. */
+  skyClockState(): { ms: number; rate: number; following: boolean; lat: number; lon: number; timezone?: string } | null {
+    const sky = this.current?.sky;
+    const ms = this.skyTimeMs();
+    if (!sky || sky.mode !== "real" || ms === null) return null;
+    return { ms, rate: this.skyClock.rate, following: this.skyClock.rate === 1 && Math.abs(ms - Date.now()) < 90_000, lat: sky.lat, lon: sky.lon, timezone: sky.timezone };
+  }
+
+  /** Live mode: put the sky at `ms` (keeps running at the current rate). `scrub` marks a drag in progress. */
+  setSkyTime(ms: number, scrub = false) {
+    if (this.renderMode) return;
+    this.skyTimeMs(); // anchor first
+    const c = this.skyClock;
+    c.tween = null;
+    c.anchorSky = ms;
+    c.anchorWall = performance.now();
+    if (scrub) c.scrubbedAt = performance.now();
+  }
+
+  /** Live mode: sky seconds per page second. */
+  setSkyRate(rate: number) {
+    if (this.renderMode) return;
+    const ms = this.skyTimeMs();
+    if (ms === null) return;
+    const c = this.skyClock;
+    c.anchorSky = ms;
+    c.anchorWall = performance.now();
+    c.rate = rate;
+  }
+
+  /** Live mode: follow the wall clock again. */
+  skyNow() {
+    this.setSkyTime(Date.now());
+    this.setSkyRate(1);
   }
 
   // ---------------------------------------------------------------- reconcile
@@ -575,6 +715,12 @@ export class Engine {
 
   private disposeNode(n: Node) {
     n.disposed = true;
+    if (this.nightMats.size || this.nightLights.size) {
+      const objs = new Set<THREE.Object3D>();
+      n.obj.traverse((o) => objs.add(o));
+      for (const x of this.nightMats) if ([...objs].some((o) => (o as THREE.Mesh).material === x.mat)) this.nightMats.delete(x);
+      for (const l of this.nightLights) if (objs.has(l.light)) this.nightLights.delete(l);
+    }
     n.obj.removeFromParent();
     for (const x of n.extra) x.removeFromParent();
     n.mixer?.stopAllAction();
@@ -699,7 +845,42 @@ export class Engine {
     }
     node.obj.name = e.id;
     node.obj.userData.teraId = e.id;
+    if (e.kind === "light" && (e.night || e.day)) this.nightLights.add({ light: node.obj as THREE.Light, base: (node.obj as THREE.Light).intensity, night: !!e.night });
+    if (e.kind === "primitive" || e.kind === "repeat") this.registerNightMats(node.obj);
+    this.nightApplied = -1;
     return node;
+  }
+
+  private registerNightMats(root: THREE.Object3D) {
+    root.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+      const info = m && !Array.isArray(m) ? (m.userData.teraNight as { day: THREE.Color; night: THREE.Color } | undefined) : undefined;
+      if (info) this.nightMats.add({ mat: m as THREE.MeshStandardMaterial, day: info.day, night: info.night });
+    });
+  }
+
+  /** Fade night-lit materials and night/day lights to `n` (0 day … 1 night). */
+  private applyNight(n: number) {
+    if (Math.abs(n - this.nightApplied) < 5e-4) return;
+    this.nightApplied = n;
+    for (const x of this.nightMats) {
+      x.mat.emissive.copy(x.day).lerp(x.night, n);
+      x.mat.emissiveIntensity = 1;
+    }
+    for (const l of this.nightLights) l.light.intensity = l.base * (l.night ? n : 1 - n);
+  }
+
+  /** `tera:sky` on window (+ CSS variable --tera-nightness and data-tera-night on <html>) when day/night changes. */
+  private emitSky(info: SkyInfo) {
+    const last = this.lastSkyEvent;
+    const now = performance.now();
+    if (last && last.night === info.isNight && Math.abs(last.n - info.nightness) < 0.005) return;
+    if (last && !this.renderMode && last.night === info.isNight && now - last.at < 200) return;
+    this.lastSkyEvent = { n: info.nightness, night: info.isNight, at: now };
+    const root = document.documentElement;
+    root.style.setProperty("--tera-nightness", info.nightness.toFixed(3));
+    root.dataset.teraNight = info.isNight ? "1" : "0";
+    window.dispatchEvent(new CustomEvent("tera:sky", { detail: { nightness: info.nightness, sunElevation: info.sunElevation, isNight: info.isNight, moonIllumination: info.moonIllumination, time: info.time } }));
   }
 
   /**
@@ -717,7 +898,7 @@ export class Engine {
       const M = parent.clone().multiply(matrixOf(x.transform));
       if (jitter) M.multiply(jitter);
       if (x.kind === "group") for (const c of x.children) visit(c, M, null, tint);
-      else if (x.kind === "repeat") for (const c of repeatCells(x.count, x.step, x.jitter)) visit(x.of, M.clone().multiply(cellMove(c)), cellJitter(c), addTint(tint, c.tint));
+      else if (x.kind === "repeat") for (const c of repeatCellsOf(x)) visit(x.of, M.clone().multiply(cellMove(c)), cellJitter(c), addTint(tint, c.tint));
       else {
         let l = leaves.get(x);
         if (!l) leaves.set(x, (l = { e: x, mats: [], tints: [] }));
@@ -725,7 +906,7 @@ export class Engine {
         l.tints.push(tint);
       }
     };
-    for (const c of repeatCells(e.count, e.step, e.jitter)) visit(e.of, cellMove(c), cellJitter(c), c.tint);
+    for (const c of repeatCellsOf(e)) visit(e.of, cellMove(c), cellJitter(c), c.tint);
     const base = new THREE.Color(), col = new THREE.Color();
     for (const l of leaves.values()) {
       const x = l.e;
@@ -797,7 +978,32 @@ export class Engine {
     this.camera.updateMatrixWorld();
     this.living.update(this.camera, this.renderMode || this.scriptT !== null ? this.time : undefined);
     this.scene.updateMatrixWorld();
-    this.sky.update(this.camera);
+    const skyMs = this.sky.isReal ? this.skyTimeMs() : null;
+    if (skyMs !== null) {
+      const c = this.skyClock;
+      const live = !this.renderMode && this.scriptT === null;
+      const frame: SkyFrame = {
+        ms: skyMs,
+        viewportH: this.size.h,
+        wall: performance.now() / 1000,
+        sync: !live,
+        fast: live && (Math.abs(c.rate) > 40 || c.tween !== null || performance.now() - c.scrubbedAt < 300),
+      };
+      this.sky.update(this.camera, frame);
+      // auto exposure (a gentle lift at night), kept in step with exact glow colours
+      const h = this.handle;
+      const mul = this.sky.real?.exposureMul ?? 1;
+      if (h) {
+        const eff = Math.round((this.current?.environment?.exposure ?? 1) * mul * 100) / 100;
+        if (h.renderer.toneMappingExposure !== eff) {
+          h.renderer.toneMappingExposure = eff;
+          setExactExposure(eff);
+        }
+      }
+    } else this.sky.update(this.camera);
+    const info = this.sky.info;
+    this.applyNight(info.nightness);
+    if (info.mode === "real" || info.mode === "sun") this.emitSky(info);
     const box = this.casterBox.makeEmpty();
     const lights: THREE.DirectionalLight[] = [];
     this.scene.traverseVisible((o) => {
@@ -1018,6 +1224,7 @@ export class Engine {
   /** XR budget path: no post, capped shadows, and in AR no sky, fog or ground. */
   private setXrPresenting(mode: XrMode | null) {
     this.xrPresenting = mode;
+    if (this.sky.real) this.sky.real.night.xr = !!mode;
     this.controls && (this.controls.enabled = !mode);
     this.applyShadowCaps();
     const ar = mode === "ar";
